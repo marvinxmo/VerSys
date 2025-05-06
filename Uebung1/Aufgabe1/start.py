@@ -6,18 +6,19 @@ import sys
 import argparse
 import statistics
 import subprocess
+import os
 from multiprocessing import Process
 
 from Zunder import Zunder
 
 
 # Define a function to run a node
-def run_node(node_id, num_nodes, initial_p, consecutive_quiet_rounds):
-    node = Zunder(node_id, num_nodes, initial_p, consecutive_quiet_rounds)
+def run_node(node_id, num_nodes, initial_p, termination_handover):
+    node = Zunder(node_id, num_nodes, initial_p, termination_handover)
     node.start()
 
 
-def run_circle(num_nodes, initial_p=0.5, consecutive_quiet_rounds=3):
+def run_circle(num_nodes, initial_p=0.5, consecutive_quiet_handover=3):
     """Run an experiment with the given number of nodes"""
     print(f"\n=== Running experiment with {num_nodes} nodes ===")
 
@@ -27,7 +28,7 @@ def run_circle(num_nodes, initial_p=0.5, consecutive_quiet_rounds=3):
 
         # Use the run_node function in a subprocess
         p = Process(
-            target=run_node, args=(i, num_nodes, initial_p, consecutive_quiet_rounds)
+            target=run_node, args=(i, num_nodes, initial_p, consecutive_quiet_handover)
         )
         p.start()
         processes.append(p)
@@ -35,15 +36,12 @@ def run_circle(num_nodes, initial_p=0.5, consecutive_quiet_rounds=3):
         time.sleep(0.5)  # Give each process a little time to start
 
     # Create node 0 (the controller) in the main process
-    node_0 = Zunder(0, num_nodes, initial_p, consecutive_quiet_rounds)
+    node_0 = Zunder(0, num_nodes, initial_p, consecutive_quiet_handover)
 
     try:
         # Start node 0
         print("Starting node 0 in main process")
         node_0.start()
-
-        # node_0.start() will block until node 0 terminates
-        print("Node 0 has terminated")
 
         # Terminate all child processes
         for i, proc in enumerate(processes):
@@ -55,7 +53,7 @@ def run_circle(num_nodes, initial_p=0.5, consecutive_quiet_rounds=3):
         stats = {
             "num_nodes": num_nodes,
             "token_rounds": node_0.token_rounds,
-            "fired_count": node_0.fired_count,
+            "fired_count": node_0.overall_fired_count,
             "round_times": node_0.round_times,
         }
 
@@ -68,6 +66,8 @@ def run_circle(num_nodes, initial_p=0.5, consecutive_quiet_rounds=3):
             stats["min_round_time"] = 0
             stats["avg_round_time"] = 0
             stats["max_round_time"] = 0
+
+        # print(stats)
 
         return stats
 
@@ -105,11 +105,14 @@ def main():
     if args.experimental_mode:
         # Run experiments with increasing number of nodes
         results = []
-        node_counts = [2, 4, 8, 16, 32, 64]
+        node_counts = [2, 4, 6, 128]
 
         try:
             for n in node_counts:
-                stats = run_experiment(n, args.initial_p, args.consecutive_quiet_rounds)
+                print(f"\nRunning experiment with {n} nodes...")
+
+                stats = run_circle(n, args.initial_p, args.consecutive_quiet_rounds)
+
                 if stats:
                     results.append(stats)
                     print(f"\nExperiment with {n} nodes completed:")
@@ -147,20 +150,28 @@ def main():
         except KeyboardInterrupt:
             print("\nExperiments interrupted by user")
     else:
-        # Run a single node
-        node = Zunder(
-            args.node_id,
-            args.total_nodes,
-            args.initial_p,
-            args.consecutive_quiet_rounds,
-        )
+        # Run a defined number of nodes in a circle
         try:
-            node.start()
+            result = run_circle(
+                args.total_nodes, args.initial_p, args.consecutive_quiet_rounds
+            )
+
+            if result:
+                print("\n=== Experiment Summary ===")
+                print(
+                    "Nodes | Token Rounds | Multicasts | Min Round (ms) | Avg Round (ms) | Max Round (ms)"
+                )
+                print("-" * 90)
+                print(
+                    f"{result['num_nodes']:5d} | {result['token_rounds']:12d} | {result['fired_count']:9d} | "
+                    f"{result['min_round_time']*1000:13.2f} | {result['avg_round_time']*1000:13.2f} | "
+                    f"{result['max_round_time']*1000:13.2f}"
+                )
+            else:
+                print(f"Experiment with {args.total_nodes} nodes failed")
         except KeyboardInterrupt:
             print(f"Node {args.node_id} interrupted by user")
 
 
 if __name__ == "__main__":
-    run_circle(
-        8, 0.5, 5
-    )  # Example run with 8 nodes, initial probability 0.5, and 5 quiet rounds
+    main()

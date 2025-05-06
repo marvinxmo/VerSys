@@ -25,6 +25,7 @@ class Zunder:
         total_nodes: int,
         initial_p: float,
         termination_handover: int = 5,
+        node_addresses=None,
     ):
 
         self.node_id = node_id
@@ -32,6 +33,8 @@ class Zunder:
         self.p = initial_p
         self.termination_handover = termination_handover
         self.overall_fired_count = 0
+
+        self.node_addresses = node_addresses or ["127.0.0.1"] * total_nodes
 
         if self.node_id == 0:
             # Statistics tracking
@@ -51,8 +54,8 @@ class Zunder:
     def _setup_sockets(self):
         # Socket for receiving token from previous node
         self.recv_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.recv_socket.bind(("127.0.0.1", BASE_PORT + self.node_id))
-        self.recv_socket.settimeout(30)  # 60 seconds timeout
+        self.recv_socket.bind(("0.0.0.0", BASE_PORT + self.node_id))
+        self.recv_socket.settimeout(30)  # 30 seconds timeout
 
         # Socket for sending token to next node
         self.send_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -100,8 +103,9 @@ class Zunder:
             try:
                 data, addr = self.recv_socket.recvfrom(1024)
                 self._handle_message(data)
+                continue
             except socket.timeout:
-                # This is just a timeout to check active status, not an error
+                # This is just a timeout to check active status
                 continue
             except Exception as e:
                 print(f"Node {self.node_id} encountered error: {e}")
@@ -142,7 +146,9 @@ class Zunder:
                 time.sleep(0.5)  # Give time for other Nodes to watch the firework
             else:
                 consecutive_quite_handover += 1
-                print(f"Node {self.node_id} did not fire this round p={self.p:.6f}")
+                print(
+                    f"Node {self.node_id} ({self.node_addresses[self.node_id]}) did not fire this round p={self.p:.6f}"
+                )
 
             # Check termination condition
             if self.termination_handover <= consecutive_quite_handover:
@@ -168,7 +174,7 @@ class Zunder:
     def forward(self, message):
         """Forward the token to the next node in the ring"""
         next_id = (self.node_id + 1) % self.total_nodes
-        next_address = ("127.0.0.1", BASE_PORT + next_id)
+        next_address = (self.node_addresses[next_id], BASE_PORT + next_id)
 
         try:
             self.send_socket.sendto(message, next_address)
@@ -194,9 +200,6 @@ class Zunder:
         while self.active:
             try:
                 data, addr = self.multicast_recv_socket.recvfrom(1024)
-                # Update last activity time when we receive any multicast message
-                self.last_activity_time = time.time()
-                
                 if data.startswith(b"ROCKET_FROM_"):
                     self.overall_fired_count += 1
                     sender = int(data.decode().split("_")[-1])
