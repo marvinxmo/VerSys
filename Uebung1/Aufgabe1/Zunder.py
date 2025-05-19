@@ -38,7 +38,7 @@ class Zunder:
             self.token_rounds = 0
             self.fired_count = 0
             self.round_times = []
-            self.last_token_time = None
+            self.last_token_time = 0
 
         # Set up sockets (recv_socket, send_socket, multicast_socket, multicast_recv_socket)
         self._setup_sockets()
@@ -180,7 +180,6 @@ class Zunder:
         print(f"Node {self.node_id} firing rocket! (p={self.p:.6f})")
         message = f"ROCKET_FROM_{self.node_id}".encode()
         self.multicast(message)
-        self.overall_fired_count += 1
 
     def multicast(self, message):
         """Send a multicast message to all nodes"""
@@ -196,7 +195,7 @@ class Zunder:
                 data, addr = self.multicast_recv_socket.recvfrom(1024)
                 # Update last activity time when we receive any multicast message
                 self.last_activity_time = time.time()
-                
+
                 if data.startswith(b"ROCKET_FROM_"):
                     self.overall_fired_count += 1
                     sender = int(data.decode().split("_")[-1])

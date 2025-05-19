@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import socket
 import time
 import threading
@@ -18,7 +17,7 @@ TOKEN = b"STREICHHOLZ"
 TERMINATE = b"TERMINATE"
 
 
-class Zunder:
+class ZunderNode:
     def __init__(
         self,
         node_id: int,
@@ -41,7 +40,7 @@ class Zunder:
             self.token_rounds = 0
             self.fired_count = 0
             self.round_times = []
-            self.last_token_time = None
+            self.last_token_time = 0
 
         # Set up sockets (recv_socket, send_socket, multicast_socket, multicast_recv_socket)
         self._setup_sockets()

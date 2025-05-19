@@ -9,12 +9,14 @@ import subprocess
 import os
 from multiprocessing import Process
 
-from Zunder import Zunder
+from Uebung1.Aufgabe2.ZunderNode import ZunderNode
 
 
 # Define a function to run a node
 def run_node(node_id, num_nodes, initial_p, termination_handover, node_addresses):
-    node = Zunder(node_id, num_nodes, initial_p, termination_handover, node_addresses)
+    node = ZunderNode(
+        node_id, num_nodes, initial_p, termination_handover, node_addresses
+    )
     print(f"Starting node {node_id}...")
     node.start()
 
