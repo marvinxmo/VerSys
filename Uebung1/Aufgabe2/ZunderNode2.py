@@ -104,7 +104,6 @@ class ZunderNode:
         # Set up sockets (recv_socket, send_socket, multicast_socket, multicast_recv_socket)
         self.multicast_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.multicast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.multicast_socket.bind(("", channel))
 
         self.multicast_recv_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.multicast_recv_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -115,6 +114,16 @@ class ZunderNode:
         self.recv_socket.settimeout(1)  # 1 second timeout for receiving messages
 
         self.send_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+        # Join multicast group
+        group = socket.inet_aton(MULTICAST_GROUP)
+        mreq = struct.pack("4sL", group, socket.INADDR_ANY)
+        self.multicast_recv_socket.setsockopt(
+            socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq
+        )
+        self.multicast_recv_socket.settimeout(
+            0.01
+        )  # Short timeout for non-blocking checking
 
         # Track if this node is currently active
         self.active = True
@@ -199,12 +208,13 @@ class ZunderNode:
                             new_node_id = max(self.lobby.node_addresses.keys()) + 1
                             self.lobby.node_addresses[new_node_id] = addr[0]
                             print(
-                                "Added new Node to lobby: {new_node_id} with IP {addr[0]}"
+                                f"Added new Node to lobby: {new_node_id} with IP {addr[0]}"
                             )
 
                             message = (
                                 LOBBY_UPDATE + b":" + self.lobby.to_json().encode()
                             )
+                            print("sent lobby update!")
 
                             try:
                                 self.multicast(message)
