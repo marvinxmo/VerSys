@@ -5,18 +5,18 @@ import java.util.Collections;
 import java.util.List;
 
 public class NodeProxy {
-    public NodeProxy ( NetworkConnection nc ) {
+    public NodeProxy(NetworkConnection nc) {
         this.nc = nc;
     }
 
-    public void deliver ( Message message, NetworkConnection sender ) {
+    public void deliver(Message message, NetworkConnection sender) {
         synchronized (messages) {
             messages.add(new ReceivedMessage(message, sender));
             messages.notify();
         }
     }
 
-    public Message receive () {
+    public Message receive() {
         synchronized (messages) {
             while (messages.isEmpty()) {
                 try {
@@ -31,8 +31,11 @@ public class NodeProxy {
             return candidate;
         }
     }
-    private record ReceivedMessage ( Message message, NetworkConnection sender ) {};
+
+    private record ReceivedMessage(Message message, NetworkConnection sender) {
+    };
 
     private final List<ReceivedMessage> messages = Collections.synchronizedList(new ArrayList<>());
+    @SuppressWarnings("unused")
     private final NetworkConnection nc;
 }

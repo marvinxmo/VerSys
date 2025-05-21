@@ -3,7 +3,7 @@ package org.oxoo2a.sim4da;
 import java.util.ArrayList;
 import java.util.List;
 
-public class OneRingToRuleThemAll {
+public class ConsistentRingToRuleThemAll {
 
     class Coordinator {
 
@@ -186,7 +186,7 @@ public class OneRingToRuleThemAll {
 
     }
 
-    void testOneRingToRuleThemAll() {
+    void testConsistentRingToRuleThemAll() {
         final int ringSize = 20;
         Simulator simulator = Simulator.getInstance();
         RingSegment[] segments = new RingSegment[ringSize];
@@ -205,7 +205,7 @@ public class OneRingToRuleThemAll {
     }
 
     public static void main(String[] args) {
-        OneRingToRuleThemAll OneRingToRuleThemAll = new OneRingToRuleThemAll();
-        OneRingToRuleThemAll.testOneRingToRuleThemAll();
+        ConsistentRingToRuleThemAll ConsistentRingToRuleThemAll = new ConsistentRingToRuleThemAll();
+        ConsistentRingToRuleThemAll.testConsistentRingToRuleThemAll();
     }
 }
