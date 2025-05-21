@@ -66,6 +66,14 @@ public class OneRingToRuleThemAll {
         double last_forward_time;
         float p_fire;
 
+        // Stats about the ring simulation
+        int total_forwards = 0;
+        int total_fires = 0;
+        int total_misfires = 0;
+        int total_roundtrips = 0;
+        List<Double> roundtrip_times = new ArrayList<Double>();
+        float p_fail = 0f;
+
         @Override
         public void engage() {
 
@@ -111,7 +119,7 @@ public class OneRingToRuleThemAll {
 
                     }
 
-                    sendBlindly(m, next_id);
+                    copyStatsToNode(m);
                     break;
                 }
 
@@ -120,6 +128,7 @@ public class OneRingToRuleThemAll {
                             m.queryHeader("sender"));
 
                     m.add("total_forwards", m.queryInteger("total_forwards") + 1);
+                    copyStatsToNode(m);
 
                     if (Integer.parseInt(id) == 0 && m.queryHeader("sender") != "Coordinator") {
 
@@ -169,12 +178,12 @@ public class OneRingToRuleThemAll {
 
                     } else {
                         m.add("token", "end");
-                        m.add("consecutive_misfires", 0);
+                        m.add("p_fail", p_fire);
                         System.out.printf("Reached %s consecutive misfires!; initiating termination\n",
                                 max_consecutive_misfires);
 
-                        m.add("p_fail", p_fire);
-
+                        broadcast(m);
+                        break;
                     }
                 }
                 p_fire = p_fire / 2;
@@ -184,6 +193,16 @@ public class OneRingToRuleThemAll {
             }
         }
 
+        void copyStatsToNode(Message m) {
+            // Copy stats from coordinator to node
+            total_forwards = m.queryInteger("total_forwards");
+            total_fires = m.queryInteger("total_fires");
+            total_misfires = m.queryInteger("total_misfires");
+            total_roundtrips = m.queryInteger("total_roundtrips");
+            roundtrip_times = m.queryDoubleArray("roundtrip_times");
+            p_fail = m.queryFloat("p_fail");
+
+        }
     }
 
     void testOneRingToRuleThemAll() {
@@ -191,13 +210,13 @@ public class OneRingToRuleThemAll {
         Simulator simulator = Simulator.getInstance();
         RingSegment[] segments = new RingSegment[ringSize];
 
-        float init_p_fire = 1f;
+        float init_p_fire = 0.5f;
 
         for (int i = 0; i < ringSize; i++) {
             segments[i] = new RingSegment(i, (i + 1) % ringSize, init_p_fire);
         }
         // Terminate after 4 consecutive misfires (time limit not implemented)
-        Coordinator coordinator = new Coordinator(25);
+        Coordinator coordinator = new Coordinator(6);
         coordinator.engage();
 
         simulator.simulate();

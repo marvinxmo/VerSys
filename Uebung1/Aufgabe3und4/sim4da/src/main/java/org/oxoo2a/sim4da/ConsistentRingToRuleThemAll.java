@@ -10,9 +10,10 @@ public class ConsistentRingToRuleThemAll {
         // private final int waitTime;
         private final NetworkConnection nc = new NetworkConnection("Coordinator");
         int max_consecutive_misfires;
+        int waitTime;
 
-        public Coordinator(int max_consecutive_misfires) {
-            // this.waitTime = waitTime;
+        public Coordinator(int waitTime, int max_consecutive_misfires) {
+            this.waitTime = waitTime;
             this.max_consecutive_misfires = max_consecutive_misfires;
         }
 
@@ -39,16 +40,14 @@ public class ConsistentRingToRuleThemAll {
 
             nc.sendBlindly(m, "0");
 
-            // Time Limit causes issues with current implementation
-            // The Ring only stops when the consecutive misfires exceed the limit
-
-            // try {
-            // Thread.sleep(waitTime);
-            // } catch (InterruptedException e) {
-            // e.printStackTrace();
-            // }
-            // m = new Message().add("token", "end");
-            // nc.sendBlindly(m, "0");
+            try {
+                Thread.sleep(waitTime);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            m = new Message().add("token", "end");
+            m.addHeader("sender", "Coordinator");
+            nc.send(m); // this is a broadcast to all nodes
         }
 
     }
@@ -63,8 +62,17 @@ public class ConsistentRingToRuleThemAll {
 
         private final String id;
         private final String next_id;
-        double last_forward_time;
+        double last_forward_time = System.currentTimeMillis();
         float p_fire;
+
+        // Stats about the ring simulation
+        int total_forwards = 0;
+        int total_fires = 0;
+        int total_misfires = 0;
+        int total_roundtrips = 0;
+        List<Double> roundtrip_times = new ArrayList<Double>();
+        float p_fail = 0f;
+        int max_consecutive_misfires = 0;
 
         @Override
         public void engage() {
@@ -83,36 +91,30 @@ public class ConsistentRingToRuleThemAll {
                 }
 
                 if (value.equals("end")) {
-                    System.out.printf("Node %s received end message; terminating.\n",
-                            NodeName());
 
-                    if (Integer.parseInt(id) == 0) {
+                    if (m.queryHeader("sender") == "Coordinator") {
 
-                        System.out.println("------------Stats---------------");
-                        System.out.printf("total_forward: %s\n", m.queryInteger("total_forwards"));
-                        System.out.printf("total_fires: %s\n", m.queryInteger("total_fires"));
-                        System.out.printf("total_misfires: %s\n", m.queryInteger("total_misfires"));
-                        System.out.printf("total_roundtrips: %s\n", m.queryInteger("total_roundtrips"));
-                        System.out.printf("roundtrip_times: %s\n", m.queryDoubleArray("roundtrip_times"));
-
-                        System.out.printf("average roundtrip time: %s\n",
-                                m.queryDoubleArray("roundtrip_times").stream().mapToDouble(Double::doubleValue)
-                                        .average().orElse(0.0));
-                        System.out.printf("min roundtrip time: %s\n",
-                                m.queryDoubleArray("roundtrip_times").stream().mapToDouble(Double::doubleValue)
-                                        .min().orElse(0.0));
-                        System.out.printf("max roundtrip time: %s\n",
-                                m.queryDoubleArray("roundtrip_times").stream().mapToDouble(Double::doubleValue)
-                                        .max().orElse(0.0));
-                        System.out.printf("p_fail: %s\n", m.queryFloat("p_fail"));
-                        System.out.printf("max_consecutive_misfires: %s\n",
-                                m.queryInteger("max_consecutive_misfires"));
-                        System.out.println("--------------Stats End---------------");
-
+                        sleep(Integer.parseInt(id) * 400);
+                        System.out.printf(
+                                "Node %s received end message from Coordinator; Reason: Timeout\n",
+                                NodeName());
+                        System.out.printf(
+                                "Node %s's stats are not in sync.\n",
+                                NodeName());
+                        printStats();
+                    } else {
+                        System.out.printf(
+                                "Node %s received end message from %s; Reason: max_consecutive_misfires reached.\n",
+                                NodeName(),
+                                m.queryHeader("sender"));
+                        copyStatsToNode(m);
                     }
 
-                    sendBlindly(m, next_id);
-                    break;
+                    if (Integer.parseInt(id) == 0) {
+                        printStats();
+                    }
+
+                    return;
                 }
 
                 if (value.equals("continue")) {
@@ -120,16 +122,14 @@ public class ConsistentRingToRuleThemAll {
                             m.queryHeader("sender"));
 
                     m.add("total_forwards", m.queryInteger("total_forwards") + 1);
+                    copyStatsToNode(m);
 
                     if (Integer.parseInt(id) == 0 && m.queryHeader("sender") != "Coordinator") {
 
                         m.add("total_roundtrips", m.queryInteger("total_roundtrips") + 1);
 
                         double receive_time = System.currentTimeMillis();
-                        System.out.println("Received token at " + receive_time);
-                        System.out.println("Last forward time: " + last_forward_time);
                         double round_time = receive_time - last_forward_time;
-                        System.out.printf("Round trip time: %s\n", round_time);
 
                         List<Double> roundtrip_times = m.queryDoubleArray("roundtrip_times");
                         roundtrip_times.add(round_time);
@@ -169,21 +169,67 @@ public class ConsistentRingToRuleThemAll {
 
                     } else {
                         m.add("token", "end");
-                        m.add("consecutive_misfires", 0);
+                        m.add("p_fail", p_fire);
                         System.out.printf("Reached %s consecutive misfires!; initiating termination\n",
                                 max_consecutive_misfires);
 
-                        m.add("p_fail", p_fire);
-
+                        broadcast(m);
+                        return;
                     }
                 }
                 p_fire = p_fire / 2;
-                // sleep(100);
-                sendBlindly(m, next_id);
+                sleep(100);
+
+                try {
+                    send(m, next_id);
+                } catch (UnknownNodeException e) {
+                    System.out.println("Unkown Node Exception: " + e.getMessage());
+                    System.out.printf("Most likely Node %s tried to contact a Node that is not the network: Node %s\n",
+                            NodeName(), next_id);
+                }
+
                 last_forward_time = System.currentTimeMillis();
             }
         }
 
+        void copyStatsToNode(Message m) {
+            // Copy stats from coordinator to node
+            total_forwards = m.queryInteger("total_forwards");
+            total_fires = m.queryInteger("total_fires");
+            total_misfires = m.queryInteger("total_misfires");
+            total_roundtrips = m.queryInteger("total_roundtrips");
+            roundtrip_times = m.queryDoubleArray("roundtrip_times");
+            p_fail = m.queryFloat("p_fail");
+            max_consecutive_misfires = m.queryInteger("max_consecutive_misfires");
+
+        }
+
+        void printStats() {
+
+            System.out.printf("------------Node %s Stats---------------", NodeName());
+            System.out.println();
+            System.out.printf("total_forward: %s\n", total_forwards);
+            System.out.printf("total_fires: %s\n", total_fires);
+            System.out.printf("total_misfires: %s\n", total_misfires);
+            System.out.printf("total_roundtrips: %s\n", total_roundtrips);
+            System.out.printf("roundtrip_times: %s\n", roundtrip_times);
+            System.out.printf("average roundtrip time: %s\n",
+                    roundtrip_times.stream().mapToDouble(Double::doubleValue)
+                            .average().orElse(0.0));
+            System.out.printf("min roundtrip time: %s\n",
+                    roundtrip_times.stream().mapToDouble(Double::doubleValue)
+                            .min().orElse(0.0));
+            System.out.printf("max roundtrip time: %s\n",
+                    roundtrip_times.stream().mapToDouble(Double::doubleValue)
+                            .max().orElse(0.0));
+            System.out.printf("p_fail: %s\n", p_fail);
+            System.out.printf("max_consecutive_misfires: %s\n",
+                    max_consecutive_misfires);
+            System.out.printf("------------Node %s Stats End-----------", NodeName());
+            System.out.println();
+            System.out.println();
+
+        }
     }
 
     void testConsistentRingToRuleThemAll() {
@@ -191,13 +237,13 @@ public class ConsistentRingToRuleThemAll {
         Simulator simulator = Simulator.getInstance();
         RingSegment[] segments = new RingSegment[ringSize];
 
-        float init_p_fire = 1f;
+        float init_p_fire = 0.5f;
 
         for (int i = 0; i < ringSize; i++) {
             segments[i] = new RingSegment(i, (i + 1) % ringSize, init_p_fire);
         }
-        // Terminate after 4 consecutive misfires (time limit not implemented)
-        Coordinator coordinator = new Coordinator(25);
+        // Terminate after 4 consecutive misfires or when time limit is reached.
+        Coordinator coordinator = new Coordinator(3000, 6);
         coordinator.engage();
 
         simulator.simulate();
