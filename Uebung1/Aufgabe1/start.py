@@ -8,6 +8,7 @@ import statistics
 import subprocess
 import os
 from multiprocessing import Process
+import questionary as q
 
 from Zunder import Zunder
 
@@ -33,8 +34,9 @@ def run_circle(num_nodes, initial_p=0.5, consecutive_quiet_handover=3):
         p.start()
         processes.append(p)
         print(f"Started node {i} in subprocess (PID: {p.pid})")
-        time.sleep(0.5)  # Give each process a little time to start
+        time.sleep(0.05)  # Give each process a little time to start
 
+    time.sleep(15)
     # Create node 0 (the controller) in the main process
     node_0 = Zunder(0, num_nodes, initial_p, consecutive_quiet_handover)
 
@@ -45,7 +47,7 @@ def run_circle(num_nodes, initial_p=0.5, consecutive_quiet_handover=3):
 
         # Terminate all child processes
         for i, proc in enumerate(processes):
-            print(f"Terminating process for node {i+1}")
+            # print(f"Terminating process for node {i+1}")
             proc.terminate()
             proc.join()
 
@@ -79,98 +81,121 @@ def run_circle(num_nodes, initial_p=0.5, consecutive_quiet_handover=3):
         return None
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Token Ring with Fireworks")
-    parser.add_argument(
-        "--total_nodes", type=int, default=8, help="Total number of nodes in the ring"
-    )
-    parser.add_argument(
-        "--initial_p", type=float, default=0.5, help="Initial probability of firing"
-    )
-    parser.add_argument(
-        "--consecutive_quiet_rounds",
-        type=int,
-        default=5,
-        help="Number of consecutive quiet rounds before termination",
-    )
-    parser.add_argument(
-        "--experimental_mode",
-        type=bool,
-        default=False,
-        help="Run experiments with increasing number of nodes",
-    )
+def get_inputs():
+    """Get inputs from the user"""
 
-    args = parser.parse_args()
-
-    if args.experimental_mode:
-        # Run experiments with increasing number of nodes
-        results = []
-        node_counts = [2, 4, 6, 128]
-
+    def validate_total_nodes(val):
         try:
-            for n in node_counts:
-                print(f"\nRunning experiment with {n} nodes...")
+            # Try to parse as int
+            int(val)
+            return True
+        except ValueError:
+            try:
+                # Try to parse as a list of ints
+                arr = json.loads(val)
+                if isinstance(arr, list) and all(isinstance(x, int) for x in arr):
+                    return True
+                return "Please enter an integer or a list of integers (e.g., [2,4,6])"
+            except Exception:
+                return "Please enter an integer or a list of integers (e.g., [2,4,6])"
 
-                stats = run_circle(n, args.initial_p, args.consecutive_quiet_rounds)
+    total_nodes = q.text(
+        "Enter the total number of nodes (int or int[]): ",
+        validate=validate_total_nodes,
+    ).ask()
 
-                if stats:
-                    results.append(stats)
-                    print(f"\nExperiment with {n} nodes completed:")
-                    print(f"Total token rounds: {stats['token_rounds']}")
-                    print(f"Total multicasts: {stats['fired_count']}")
-                    print(
-                        f"Round times (min/avg/max): {stats['min_round_time']:.6f}s / "
-                        f"{stats['avg_round_time']:.6f}s / {stats['max_round_time']:.6f}s"
-                    )
-                else:
-                    print(f"Experiment with {n} nodes failed")
-                    break
-
-            # Save results to a file
-            with open("token_ring_results.json", "w") as f:
-                json.dump(results, f, indent=2)
-
-            print(
-                "\nAll experiments completed. Results saved to token_ring_results.json"
+    initial_p = q.text(
+        "Enter the initial probability of firing (float): ",
+        validate=lambda x: (
+            (
+                x.replace(".", "", 1).isdigit()
+                and x.count(".") < 2
+                and float(x) >= 0
+                and float(x) <= 1
             )
+            or "Please enter a valid float."
+        ),
+    ).ask()
 
-            # Print summary
-            print("\n=== Experiment Summary ===")
-            print(
-                "Nodes | Token Rounds | Multicasts | Min Round (ms) | Avg Round (ms) | Max Round (ms)"
-            )
-            print("-" * 90)
-            for result in results:
-                print(
-                    f"{result['num_nodes']:5d} | {result['token_rounds']:12d} | {result['fired_count']:9d} | "
-                    f"{result['min_round_time']*1000:13.2f} | {result['avg_round_time']*1000:13.2f} | "
-                    f"{result['max_round_time']*1000:13.2f}"
-                )
+    consecutive_quiet_handover = q.text(
+        "Enter the number of consecutive quiet handover before termination (int): ",
+        validate=lambda x: (x.isdigit() or "Please enter a valid integer."),
+    ).ask()
 
-        except KeyboardInterrupt:
-            print("\nExperiments interrupted by user")
+    # Convert inputs to appropriate types
+
+    # Parse total_nodes as a list of integers, even if a single int is given
+    if "[" in total_nodes:
+        total_nodes = json.loads(total_nodes)
     else:
-        # Run a defined number of nodes in a circle
-        try:
-            result = run_circle(
-                args.total_nodes, args.initial_p, args.consecutive_quiet_rounds
-            )
+        total_nodes = [int(total_nodes)]
 
-            if result:
-                print("\n=== Experiment Summary ===")
+    initial_p = float(initial_p)
+    consecutive_quiet_handover = int(consecutive_quiet_handover)
+
+    return total_nodes, initial_p, consecutive_quiet_handover
+
+
+def main():
+
+    print("Welcome to the Token Ring Experiment!")
+
+    # Get inputs from the user
+    total_nodes, initial_p, consecutive_quiet_handover = get_inputs()
+
+    results = []
+
+    try:
+        for n in total_nodes:
+            if n < 2:
+                print("Number of nodes must be at least 2.")
+                sys.exit(1)
+
+            print(f"\nRunning experiment with {n} nodes...")
+
+            stats = run_circle(n, initial_p, consecutive_quiet_handover)
+
+            if stats:
+                results.append(stats)
+                print(f"\nExperiment with {n} nodes completed:")
+                print(f"Total token rounds: {stats['token_rounds']}")
+                print(f"Total rockets fired: {stats['fired_count']}")
                 print(
-                    "Nodes | Token Rounds | Multicasts | Min Round (ms) | Avg Round (ms) | Max Round (ms)"
-                )
-                print("-" * 90)
-                print(
-                    f"{result['num_nodes']:5d} | {result['token_rounds']:12d} | {result['fired_count']:9d} | "
-                    f"{result['min_round_time']*1000:13.2f} | {result['avg_round_time']*1000:13.2f} | "
-                    f"{result['max_round_time']*1000:13.2f}"
+                    f"Round times (min/avg/max): {stats['min_round_time']:.6f}s / "
+                    f"{stats['avg_round_time']:.6f}s / {stats['max_round_time']:.6f}s"
                 )
             else:
-                print(f"Experiment with {args.total_nodes} nodes failed")
-        except KeyboardInterrupt:
-            print(f"Node {args.node_id} interrupted by user")
+                print(f"Experiment with {n} nodes failed")
+                break
+
+            # Save results to a file
+            # with open("token_ring_results.json", "w") as f:
+            #     json.dump(results, f, indent=2)
+
+            # print(
+            #     "\nAll experiments completed. Results saved to token_ring_results.json"
+            # )
+
+            # Print summary
+        print("\n=== Summary ===")
+        print(
+            f"{'Nodes':>7} | {'Token Rounds':>13} | {'Rockets fired':>14} | {'Min Round (ms)':>15} | {'Avg Round (ms)':>15} | {'Max Round (ms)':>15}"
+        )
+        print(
+            "------- | ------------- | -------------- | --------------- | --------------- | ---------------"
+        )
+        for result in results:
+            print(
+                f"{result['num_nodes']:7d} | "
+                f"{result['token_rounds']:13d} | "
+                f"{result['fired_count']:14d} | "
+                f"{result['min_round_time']*1000:15.2f} | "
+                f"{result['avg_round_time']*1000:15.2f} | "
+                f"{result['max_round_time']*1000:15.2f}"
+            )
+
+    except KeyboardInterrupt:
+        print("\nExperiments interrupted by user")
 
 
 if __name__ == "__main__":
