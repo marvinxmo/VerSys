@@ -51,6 +51,22 @@ Die Zunder-Klasse wurde um die Lobby host und beitritt Funktion erweitert. Die S
 
 ![UML Zunder](./resources/Zunder_UML.png)
 
-Ich habe die folgenden Ergebnisse erzielt:
-Mit Parametern: xxx
-Ergebnisse: xxx
+Node 0 ist wieder für das erheben der Statistiken verantwortlich. In einer Erweiterung könnte man nach dem terminieren der Token-Weitergabe auch noch die Ergebnisse durch den Ring propagieren. In der aktuellen Version printed aber nur der ursprüngliche Host die Statistiken ins terminal.
+
+Um die Statistiken zu erheben habe ich ein Ring mit 3 Nodes initialisiert. Davon sind 2 Prozesse auf meinem PC gelaufen und einer auf meinem MacBook.
+
+Um die Ergebnisse zeischen den Experimenten vergleichbar zu halten habe ich mich für folgendes Vorgehen entschieden:
+
+1. Teriminal Ausgaben und sleeps werden auskommentiert
+2. Ringnetzwerk mit 3 Nodes (wegen der Hardware-Limitierung in Aufgabe 2)
+3. Gemessen wird die erste Runde. Dafür nutze ich eine Zündwahrscheinlichkeit von 1, damit garantiert jeder Node zündet.
+
+Dazu habe ich erneut eine Messung mit meinem Code aus Aufgabe 1 durchgeführt.
+
+|                              |           Anmerkung           | Anzahl Nodes | Zeit der ersten Runde (alle zünden; average über 5 Versuche) |
+| :--------------------------- | :---------------------------: | :----------: | :----------------------------------------------------------: |
+| Aufgabe 1                    |      alle 3 Nodes auf PC      |      3       |                           2.34 ms                            |
+| Aufgabe 2 (PC als Host)      | Node 0: MB<br>Node 1 & 2: PC  |      3       |                           77.33 ms                           |
+| Aufgabe 2 (MacBook als Host) | Node 0 & 1: PC<br> Node 2: MB |      3       |                           6.13 ms                            |
+
+Bei Aufgabe 2 ist mir aufgefallen, dass es auch einen signifikanten Unterschied macht wer der Host ist, da dieser die Statistik erfasst und zum Beispiel Rundenzeiten berechnen muss. Hier wird mir mal wieder aufgezeit wie schnell mein MacBook im Vergleich zu meiner Windows Gurke ist. Dafür kann man mein MacBook im Gegenzug ab ca. 5 Chrome Tabs als Laubgebläse zweckentfremden. :D

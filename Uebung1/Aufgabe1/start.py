@@ -36,7 +36,7 @@ def run_circle(num_nodes, initial_p=0.5, consecutive_quiet_handover=3):
         print(f"Started node {i} in subprocess (PID: {p.pid})")
         time.sleep(0.05)  # Give each process a little time to start
 
-    time.sleep(15)
+    time.sleep(2)
     # Create node 0 (the controller) in the main process
     node_0 = Zunder(0, num_nodes, initial_p, consecutive_quiet_handover)
 
@@ -160,6 +160,7 @@ def main():
                 print(f"\nExperiment with {n} nodes completed:")
                 print(f"Total token rounds: {stats['token_rounds']}")
                 print(f"Total rockets fired: {stats['fired_count']}")
+                print(f"Round times (s): {stats['round_times']}")
                 print(
                     f"Round times (min/avg/max): {stats['min_round_time']:.6f}s / "
                     f"{stats['avg_round_time']:.6f}s / {stats['max_round_time']:.6f}s"

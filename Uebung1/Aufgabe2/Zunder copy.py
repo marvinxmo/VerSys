@@ -391,13 +391,12 @@ class Zunder:
             self.token_rounds = 0
             self.fired_by_this_node_count = 0
             self.round_times = []
-            # Initialize for first round timing
+            self.last_token_time = time.time()  # Initialize for first round timing
             print(f"Node {self.node_id} (Host) initiating token passing...")
-            # time.sleep(2)  # Brief pause for clients to fully initialize their listeners
+            time.sleep(2)  # Brief pause for clients to fully initialize their listeners
             initial_token_message = (
                 TOKEN + b":0"
             )  # consecutive_quiet_handover starts at 0
-            self.last_token_time = time.time()
             self.forward(initial_token_message)
 
         # Main simulation loop: listen for UDP game messages
@@ -424,8 +423,8 @@ class Zunder:
                             is_from_expected_sender = True
 
                     if is_from_expected_sender:
-                        # print(f"{10*"-"}")
-                        # print(f"Received TOKEN from Node {expected_prev_node_id}.")
+                        print(f"{10*"-"}")
+                        print(f"Received TOKEN from Node {expected_prev_node_id}.")
                         self._handle_token_message(data)
                     else:
                         # This can happen if a late/duplicate token arrives.
@@ -437,11 +436,12 @@ class Zunder:
                     try:
                         sender_node_id_str = data.decode().split("_")[-1]
                         sender_node_id = int(sender_node_id_str)
-                        if sender_node_id != self.node_id:
-                            pass  # Don't report seeing your own rocket
-                        # print(
-                        #    f"Node {self.node_id} saw rocket from Node {sender_node_id}! 🎆"
-                        # )
+                        if (
+                            sender_node_id != self.node_id
+                        ):  # Don't report seeing your own rocket
+                            print(
+                                f"Node {self.node_id} saw rocket from Node {sender_node_id}! 🎆"
+                            )
                     except ValueError:
                         print(
                             f"Node {self.node_id}: Received malformed ROCKET_FROM message."
@@ -475,7 +475,6 @@ class Zunder:
                 print(f"Rockets fired by Node 0: {self.fired_by_this_node_count}")
                 print(f"Total rockets seen by Node 0: {self.overall_fired_count}")
                 if self.round_times:
-                    print(f"Round times (in seconds): {self.round_times}")
                     print(f"Min round time: {min(self.round_times):.4f}s")
                     print(f"Avg round time: {statistics.mean(self.round_times):.4f}s")
                     print(f"Max round time: {max(self.round_times):.4f}s")
@@ -519,20 +518,20 @@ class Zunder:
             consecutive_quiet_handover = 0  # Reset counter
             if self.node_id == 0:
                 self.fired_by_this_node_count += 1
-        # time.sleep(0.5)  # Simulate time for firework display / message propagation
+            time.sleep(0.5)  # Simulate time for firework display / message propagation
         else:
             consecutive_quiet_handover += 1
-            # print(
-            # f"Node {self.node_id} did not fire. p={self.p:.6f}, quiet_rounds={consecutive_quiet_handover}/{self.termination_handover}"
-            # )
+            print(
+                f"Node {self.node_id} did not fire. p={self.p:.6f}, quiet_rounds={consecutive_quiet_handover}/{self.termination_handover}"
+            )
 
         # Check termination condition (based on this node's configured termination_handover)
         if self.termination_handover <= consecutive_quiet_handover:
-            # print(
-            # f"\n Node {self.node_id} initiating termination: reached limit of consecutive misfires {self.termination_handover}."
-            # )
+            print(
+                f"\n Node {self.node_id} initiating termination: reached limit of consecutive misfires {self.termination_handover}."
+            )
             self.unicast_to_all(TERMINATE)  # Send TERMINATE to all other nodes
-            # time.sleep(0.5)  # Allow time for TERMINATE to propagate
+            time.sleep(0.5)  # Allow time for TERMINATE to propagate
             self.active = False  # This node stops
             return  # Do not forward token or reduce p
 
@@ -553,10 +552,10 @@ class Zunder:
             next_ip, next_game_port = self.peers[next_node_id]
             try:
                 self.game_socket.sendto(message, (next_ip, next_game_port))
-                # print(
-                #     f"Node {self.node_id} forwarded message to Node {next_node_id} ({next_ip}:{next_game_port})."
-                # )
-                # print(f"{10*'-'}")
+                print(
+                    f"Node {self.node_id} forwarded message to Node {next_node_id} ({next_ip}:{next_game_port})."
+                )
+                print(f"{10*'-'}")
             except Exception as e:
                 print(
                     f"Node {self.node_id}: Failed to forward to Node {next_node_id} ({next_ip}:{next_game_port}): {e}"
