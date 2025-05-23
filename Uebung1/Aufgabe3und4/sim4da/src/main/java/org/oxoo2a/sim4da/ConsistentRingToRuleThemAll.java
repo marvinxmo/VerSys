@@ -5,6 +5,11 @@ import java.util.List;
 
 public class ConsistentRingToRuleThemAll {
 
+    final int ringSize = 20;
+    final float init_p_fire = 0.8f;
+    final int max_consecutive_misfires = 10;
+    final int waitTime = 15000;
+
     class Coordinator {
 
         // private final int waitTime;
@@ -62,7 +67,7 @@ public class ConsistentRingToRuleThemAll {
 
         private final String id;
         private final String next_id;
-        double last_forward_time = System.currentTimeMillis();
+        long last_forward_time;
         float p_fire;
 
         // Stats about the ring simulation
@@ -83,8 +88,8 @@ public class ConsistentRingToRuleThemAll {
 
                 String value = m.query("token");
 
-                if (value == "fire") {
-                    // Commented out to avoid longer round times caused by printingto console.
+                if ("fire".equals(value)) {
+
                     // System.out.printf("Node %s saw firework from Node %s.\n", NodeName(),
                     // m.queryHeader("sender"));
                     continue;
@@ -92,7 +97,7 @@ public class ConsistentRingToRuleThemAll {
 
                 if (value.equals("end")) {
 
-                    if (m.queryHeader("sender") == "Coordinator") {
+                    if ("Coordinator".equals(m.queryHeader("sender"))) {
 
                         sleep(Integer.parseInt(id) * 400);
                         System.out.printf(
@@ -124,15 +129,15 @@ public class ConsistentRingToRuleThemAll {
                     m.add("total_forwards", m.queryInteger("total_forwards") + 1);
                     copyStatsToNode(m);
 
-                    if (Integer.parseInt(id) == 0 && m.queryHeader("sender") != "Coordinator") {
+                    if (Integer.parseInt(id) == 0 && !"Coordinator".equals(m.queryHeader("sender"))) {
 
                         m.add("total_roundtrips", m.queryInteger("total_roundtrips") + 1);
 
-                        double receive_time = System.currentTimeMillis();
-                        double round_time = receive_time - last_forward_time;
+                        long receive_time = System.nanoTime();
+                        double round_time_ms = (receive_time - last_forward_time) / 1_000_000.0;
 
                         List<Double> roundtrip_times = m.queryDoubleArray("roundtrip_times");
-                        roundtrip_times.add(round_time);
+                        roundtrip_times.add(round_time_ms);
                         m.add("roundtrip_times", roundtrip_times);
 
                     }
@@ -188,7 +193,7 @@ public class ConsistentRingToRuleThemAll {
                             NodeName(), next_id);
                 }
 
-                last_forward_time = System.currentTimeMillis();
+                last_forward_time = System.nanoTime();
             }
         }
 

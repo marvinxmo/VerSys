@@ -5,6 +5,10 @@ import java.util.List;
 
 public class OneRingToRuleThemAll {
 
+    final int ringSize = 3;
+    final float init_p_fire = 1f;
+    final int max_consecutive_misfires = 5;
+
     class Coordinator {
 
         // private final int waitTime;
@@ -63,7 +67,7 @@ public class OneRingToRuleThemAll {
 
         private final String id;
         private final String next_id;
-        double last_forward_time;
+        long last_forward_time;
         float p_fire;
 
         // Stats about the ring simulation
@@ -84,9 +88,8 @@ public class OneRingToRuleThemAll {
                 String value = m.query("token");
 
                 if (value == "fire") {
-                    // Commented out to avoid longer round times caused by printingto console.
-                    // System.out.printf("Node %s saw firework from Node %s.\n", NodeName(),
-                    // m.queryHeader("sender"));
+                    System.out.printf("Node %s saw firework from Node %s.\n", NodeName(),
+                            m.queryHeader("sender"));
                     continue;
                 }
 
@@ -134,14 +137,14 @@ public class OneRingToRuleThemAll {
 
                         m.add("total_roundtrips", m.queryInteger("total_roundtrips") + 1);
 
-                        double receive_time = System.currentTimeMillis();
-                        System.out.println("Received token at " + receive_time);
-                        System.out.println("Last forward time: " + last_forward_time);
-                        double round_time = receive_time - last_forward_time;
-                        System.out.printf("Round trip time: %s\n", round_time);
+                        long receive_time = System.nanoTime();
+                        // System.out.println("Received token at " + receive_time);
+                        // System.out.println("Last forward time: " + last_forward_time);
+                        double round_time_ms = (receive_time - last_forward_time) / 1_000_000.0;
+                        System.out.printf("Round trip time: %s ms \n", round_time_ms);
 
                         List<Double> roundtrip_times = m.queryDoubleArray("roundtrip_times");
-                        roundtrip_times.add(round_time);
+                        roundtrip_times.add(round_time_ms);
                         m.add("roundtrip_times", roundtrip_times);
 
                     }
@@ -189,7 +192,7 @@ public class OneRingToRuleThemAll {
                 p_fire = p_fire / 2;
                 // sleep(100);
                 sendBlindly(m, next_id);
-                last_forward_time = System.currentTimeMillis();
+                last_forward_time = System.nanoTime();
             }
         }
 
@@ -206,17 +209,22 @@ public class OneRingToRuleThemAll {
     }
 
     void testOneRingToRuleThemAll() {
-        final int ringSize = 20;
+
         Simulator simulator = Simulator.getInstance();
         RingSegment[] segments = new RingSegment[ringSize];
-
-        float init_p_fire = 0.5f;
+        // long last_time = System.currentTimeMillis();
 
         for (int i = 0; i < ringSize; i++) {
             segments[i] = new RingSegment(i, (i + 1) % ringSize, init_p_fire);
+            // if ((i % 5000 == 0) && (i != 0)) {
+            // System.out.println(
+            // String.format("Creating node %d. (5k Nodes took %.2fs)", i,
+            // (System.currentTimeMillis() - last_time) / 1000.0));
+            // }
         }
+        System.out.println("starting simulation with " + ringSize + " nodes");
         // Terminate after 4 consecutive misfires (time limit not implemented)
-        Coordinator coordinator = new Coordinator(6);
+        Coordinator coordinator = new Coordinator(max_consecutive_misfires);
         coordinator.engage();
 
         simulator.simulate();
