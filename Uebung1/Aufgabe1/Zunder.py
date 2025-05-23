@@ -60,6 +60,7 @@ class Zunder:
         # Socket for multicast (broadcast) messages
         self.multicast_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.multicast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # self.multicast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_, 1)
 
         # Socket for receiving multicast messages
         self.multicast_recv_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -85,7 +86,7 @@ class Zunder:
 
         # If this is node 0, initiate the token passing
         if self.node_id == 0:
-            # print(f"= Node {self.node_id} initiating token passing =")
+            print(f"= Node {self.node_id} initiating token passing =")
             time.sleep(2)  # Give other nodes time to start
             self.last_token_time = time.time()
 
@@ -104,16 +105,16 @@ class Zunder:
                 # This is just a timeout to check active status, not an error
                 continue
             except Exception as e:
-                # print(f"Node {self.node_id} encountered error: {e}")
+                print(f"Node {self.node_id} encountered error: {e}")
                 self.active = False
 
         # Cleanup
-        # print(f"Node {self.node_id} is shutting down...")
+        print(f"Node {self.node_id} is shutting down...")
         self.recv_socket.close()
         self.send_socket.close()
         self.multicast_socket.close()
         self.multicast_recv_socket.close()
-        # print(f"Node {self.node_id} terminated")
+        print(f"Node {self.node_id} terminated")
 
     def _handle_message(self, data: bytes):
         """Handle received messages"""
@@ -146,9 +147,9 @@ class Zunder:
 
             # Check termination condition
             if self.termination_handover <= consecutive_quite_handover:
-                # print(
-                # f"Node {self.node_id} initiating termination after {str(consecutive_quite_handover)} quiet rounds"
-                # )
+                print(
+                    f"Node {self.node_id} initiating termination after {str(consecutive_quite_handover)} quiet rounds"
+                )
                 self.multicast(TERMINATE)
                 time.sleep(0.5)  # Give time for multicast to propagate
                 self.active = False
@@ -162,7 +163,7 @@ class Zunder:
             self.forward(msg)
 
         elif data == TERMINATE:
-            # print(f"Node {self.node_id} received termination signal")
+            print(f"Node {self.node_id} received termination signal")
             self.active = False
 
     def forward(self, message):
@@ -199,10 +200,10 @@ class Zunder:
                 if data.startswith(b"ROCKET_FROM_"):
                     self.overall_fired_count += 1
                     sender = int(data.decode().split("_")[-1])
-                    # if sender != self.node_id:
-                    # print(f"Node {self.node_id} saw rocket from Node {sender}! 🎆")
+                    if sender != self.node_id:
+                        print(f"Node {self.node_id} saw rocket from Node {sender}! 🎆")
                 elif data == TERMINATE:
-                    # print(f"Node {self.node_id} received termination via multicast")
+                    print(f"Node {self.node_id} received termination via multicast")
                     self.active = False
                     break
             except socket.timeout:

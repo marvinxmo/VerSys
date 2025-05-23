@@ -104,6 +104,8 @@ class ZunderNode:
         # Set up sockets (recv_socket, send_socket, multicast_socket, multicast_recv_socket)
         self.multicast_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.multicast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # prevent message loopback
+        self.multicast_socket.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 0)
 
         self.multicast_recv_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.multicast_recv_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -144,12 +146,16 @@ class ZunderNode:
     def send_discovery_request(self):
         """Send a discovery request to the multicast group"""
 
-        self.multicast(DISCOVERY_REQUEST)
+        self.multicast(DISCOVERY_REQUEST + b":" + str(self.my_ip).encode())
         print(f"Node announced itself via multicast")
-        self.multicast_socket.settimeout(10)  # Wait for 10 seconds for a response
+        self.multicast_recv_socket.settimeout(10)  # Wait for 10 seconds for a response
 
         try:
-            data, addr = self.multicast_socket.recvfrom(1024)
+            data, addr = self.multicast_recv_socket.recvfrom(1024)
+
+            # The Node receives its own DISCOVERY_REQUEST
+            if data.startswith(DISCOVERY_REQUEST):
+                data, addr = self.multicast_recv_socket.recvfrom(1024)
 
             if data.startswith(LOBBY_UPDATE):
                 # Parse response and join the lobby
@@ -196,19 +202,22 @@ class ZunderNode:
         while self.active:
             try:
                 data, addr = self.multicast_recv_socket.recvfrom(1024)
+                print(f"Node {self.node_id} received multicast message: {data}")
 
                 if data.startswith(DISCOVERY_REQUEST):
 
                     # Handle discovery request if we're the host
                     if self.is_host:
 
-                        if self.lobby_mode:
+                        sender_ip = str(data.decode().split(":")[-1])
+
+                        if self.lobby_mode & (self.my_ip != sender_ip):
 
                             # Assign next available node_id (max existing + 1)
                             new_node_id = max(self.lobby.node_addresses.keys()) + 1
-                            self.lobby.node_addresses[new_node_id] = addr[0]
+                            self.lobby.node_addresses[new_node_id] = sender_ip
                             print(
-                                f"Added new Node to lobby: {new_node_id} with IP {addr[0]}"
+                                f"Added new Node to lobby: {new_node_id} with IP {sender_ip}"
                             )
 
                             message = (
@@ -359,8 +368,8 @@ class ZunderNode:
         self.multicast_thread.start()
 
         if self.is_host:
-            self.start_ring_thread = threading.Thread(target=self.start_ring)
-            self.start_ring_thread.daemon = True
+            input("Press enter to start the ring...")
+            self.start_ring()
 
         # Set timeout to allow checking active status periodically
         self.recv_socket.settimeout(1)

@@ -62,6 +62,13 @@ class ZunderNode:
         # Socket for multicast (broadcast) messages
         self.multicast_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.multicast_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Set TTL for outgoing multicast packets
+        ttl = struct.pack(
+            "b", 5
+        )  # TTL von 1 für dasselbe Subnetz, 5 oder höher für größere Netzwerke
+        self.multicast_socket.setsockopt(
+            socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, ttl
+        )
 
         # Socket for receiving multicast messages
         self.multicast_recv_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

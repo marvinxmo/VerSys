@@ -46,7 +46,6 @@ def main():
         if node.node_id == 0:
             print("You are Host. Wait for others to join or press enter to start ring.")
             input("Press enter to start the ring...")
-            node.start_ring_thread.start()
 
             # Collect statistics from node 0
             n = len(node.lobby.node_addresses)

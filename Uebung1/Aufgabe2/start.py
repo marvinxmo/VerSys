@@ -9,7 +9,7 @@ import subprocess
 import os
 from multiprocessing import Process
 
-from Uebung1.Aufgabe2.ZunderNode import ZunderNode
+from ZunderNode import ZunderNode
 
 
 # Define a function to run a node

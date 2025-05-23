@@ -47,7 +47,7 @@ def run_circle(num_nodes, initial_p=0.5, consecutive_quiet_handover=3):
 
         # Terminate all child processes
         for i, proc in enumerate(processes):
-            # print(f"Terminating process for node {i+1}")
+            print(f"Terminating process for node {i+1}")
             proc.terminate()
             proc.join()
 
