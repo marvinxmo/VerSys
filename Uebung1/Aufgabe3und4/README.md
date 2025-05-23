@@ -47,7 +47,7 @@ Um eine Terminal-Flutung zu vermeiden, printet aber immer noch nur Node 0 diese.
 
 Ein Bottleneck scheint hier die Initialisierung neuer Nodes zu sein, die mit zunehmender Anzahl immer langsamer wird (siehe Foto):
 
-![Node Initialisierung](./resources/node_init.png)
+![Node Initialisierung](./resources/node_init.PNG)
 
 Mit 100.000 Nodes funktioniert die Simulation tatsächlich noch – wenn auch mit ächzendem Rechner.  
 Zwar entsprechend langsam, aber es wird bei einer Zündung immerhin ein `broadcast` an 100k Nodes simuliert.  
