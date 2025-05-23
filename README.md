@@ -2,9 +2,8 @@
 
 ## Übung1
 
-### How to run
+Die schriftliche Dokumentation sowie eine Anleitung zur Ausführung des Codes befinden sich in den jeweiligen Unterverzeichnissen der Aufgaben
 
-In den READMEs der jeweiligen Unterordner der Aufgaben finden Sie:
-
-1. Eine Anleitung zur Reproduktion meiner
-2. Meine schriftliche Ausarbeitung der Aufgabe
+Aufgabe 1: [Übung1/Aufgabe1](./Uebung1/Aufgabe1/)<br>
+Aufgabe 2: [Übung1/Aufgabe2](./Uebung1/Aufgabe2/)<br>
+Aufgabe 3 und 4: [Übung1/Aufgabe3und4](./Uebung1/Aufgabe3und4/)
