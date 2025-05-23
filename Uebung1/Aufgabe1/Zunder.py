@@ -140,18 +140,18 @@ class Zunder:
             if should_fire:
                 self.fire()
                 consecutive_quite_handover = 0
-                # time.sleep(0.5)  # Give time for other Nodes to watch the firework
+                time.sleep(0.5)  # Give time for other Nodes to watch the firework
             else:
                 consecutive_quite_handover += 1
-                # print(f"Node {self.node_id} did not fire this round p={self.p:.6f}")
+                print(f"Node {self.node_id} did not fire this round p={self.p:.6f}")
 
             # Check termination condition
             if self.termination_handover <= consecutive_quite_handover:
-                # print(
-                #     f"Node {self.node_id} initiating termination after {str(consecutive_quite_handover)} quiet rounds"
-                # )
+                print(
+                    f"Node {self.node_id} initiating termination after {str(consecutive_quite_handover)} quiet rounds"
+                )
                 self.multicast(TERMINATE)
-                # time.sleep(0.5)  # Give time for multicast to propagate
+                time.sleep(0.5)  # Give time for multicast to propagate
                 self.active = False
                 return
 
@@ -178,7 +178,7 @@ class Zunder:
 
     def fire(self):
         """Fire a rocket (send a multicast to all nodes)"""
-        # print(f"Node {self.node_id} firing rocket! (p={self.p:.6f})")
+        print(f"Node {self.node_id} firing rocket! (p={self.p:.6f})")
         message = f"ROCKET_FROM_{self.node_id}".encode()
         self.multicast(message)
 
@@ -201,8 +201,7 @@ class Zunder:
                     self.overall_fired_count += 1
                     sender = int(data.decode().split("_")[-1])
                     if sender != self.node_id:
-                        pass
-                        # print(f"Node {self.node_id} saw rocket from Node {sender}! 🎆")
+                        print(f"Node {self.node_id} saw rocket from Node {sender}! 🎆")
                 elif data == TERMINATE:
                     print(f"Node {self.node_id} received termination via multicast")
                     self.active = False
