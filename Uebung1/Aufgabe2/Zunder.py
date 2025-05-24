@@ -46,12 +46,12 @@ class Zunder:
 
         # Configuration values (host sets these, client receives them)
         self.initial_p_config = initial_p
-        self.termination_handover_config = max_consecutive_handover
+        self.max_consecutive_misfires_config = max_consecutive_handover
         self.expected_nodes_config = expected_nodes
 
         # Live simulation parameters
         self.p = 0.0
-        self.termination_handover = 0
+        self.max_consecutive_misfires = 0
 
         self.peers = {}  # Stores node_id: (ip, game_port) for all nodes
         self.client_tcp_connections = {}  # For host: client_node_id: tcp_conn for lobby
@@ -131,7 +131,7 @@ class Zunder:
     def _host_lobby(self):
         self.node_id = 0
         self.p = self.initial_p_config
-        self.termination_handover = self.termination_handover_config
+        self.max_consecutive_misfires = self.max_consecutive_misfires_config
 
         my_ip = get_local_ip()
         with self.lobby_lock:
@@ -192,7 +192,7 @@ class Zunder:
             if self.total_nodes == self.expected_nodes_config:
                 print("Host: All expected nodes have joined. \n")
                 # Prepare and send the start signal to all connected clients
-                start_message_payload = f"START_SIMULATION:{self.p}:{self.termination_handover}:{json.dumps(self.peers)}"
+                start_message_payload = f"START_SIMULATION:{self.p}:{self.max_consecutive_misfires}:{json.dumps(self.peers)}"
                 start_message = start_message_payload.encode()
 
                 print(f"{40*'='}")
@@ -209,7 +209,7 @@ class Zunder:
                         client_conn.close()  # Close TCP control connection
 
                 print(
-                    f"  Config: p={self.p}, max_consecutive_misfires={self.termination_handover}, total_nodes={self.total_nodes}"
+                    f"  Config: p={self.p}, max_consecutive_misfires={self.max_consecutive_misfires}, total_nodes={self.total_nodes}"
                 )
                 print(f"  Peers: {self.peers}")  # Can be verbose
                 print(f"{40*'='} \n ")
@@ -338,7 +338,7 @@ class Zunder:
             if start_message.startswith("START_SIMULATION:"):
                 parts = start_message.split(":", 3)
                 self.p = float(parts[1])
-                self.termination_handover = int(parts[2])
+                self.max_consecutive_misfires = int(parts[2])
                 peers_json_str = parts[3]
 
                 loaded_peers = json.loads(peers_json_str)
@@ -350,7 +350,7 @@ class Zunder:
                 print(f"\n {40*'='}")
                 print(f"Client (Node {self.node_id}): Received START_SIMULATION.")
                 print(
-                    f"  Config: p={self.p}, max_consecutive_misfires={self.termination_handover}, total_nodes={self.total_nodes}"
+                    f"  Config: p={self.p}, max_consecutive_misfires={self.max_consecutive_misfires}, total_nodes={self.total_nodes}"
                 )
                 print(f"  Peers: {self.peers}")  # Can be verbose
                 print(f"{40*'='} \n ")
@@ -382,10 +382,6 @@ class Zunder:
 
         # Setup UDP socket earlier in __join_lobby or __host_lobby in order to block the UDP Port for others
         # self._setup_game_socket()
-
-        # print(
-        #     f"Node {self.node_id}: Simulation started. p={self.p:.6f}, termination_handover={self.termination_handover}, total_nodes={self.total_nodes}"
-        # )
 
         if self.node_id == 0:  # Host-specific initializations
             self.token_rounds = 0
@@ -522,13 +518,13 @@ class Zunder:
         else:
             consecutive_quiet_handover += 1
             print(
-                f"Node {self.node_id} did not fire. p={self.p:.6f}, quiet_rounds={consecutive_quiet_handover}/{self.termination_handover}"
+                f"Node {self.node_id} did not fire. p={self.p:.6f}, quiet_rounds={consecutive_quiet_handover}/{self.max_consecutive_misfires}"
             )
 
-        # Check termination condition (based on this node's configured termination_handover)
-        if self.termination_handover <= consecutive_quiet_handover:
+        # Check termination condition (based on this node's configured max_consecutive_misfires)
+        if self.max_consecutive_misfires <= consecutive_quiet_handover:
             print(
-                f"\n Node {self.node_id} initiating termination: reached limit of consecutive misfires {self.termination_handover}."
+                f"\n Node {self.node_id} initiating termination: reached limit of consecutive misfires {self.max_consecutive_misfires}."
             )
             self.unicast_to_all(TERMINATE)  # Send TERMINATE to all other nodes
             time.sleep(0.5)  # Allow time for TERMINATE to propagate

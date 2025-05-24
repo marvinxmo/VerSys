@@ -14,8 +14,8 @@ from Zunder import Zunder
 
 
 # Define a function to run a node
-def run_node(node_id, num_nodes, initial_p, termination_handover):
-    node = Zunder(node_id, num_nodes, initial_p, termination_handover)
+def run_node(node_id, num_nodes, initial_p, max_consecutive_misfires):
+    node = Zunder(node_id, num_nodes, initial_p, max_consecutive_misfires)
     node.start()
 
 

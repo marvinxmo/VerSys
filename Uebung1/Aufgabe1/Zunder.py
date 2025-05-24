@@ -24,13 +24,13 @@ class Zunder:
         node_id: int,
         total_nodes: int,
         initial_p: float,
-        termination_handover: int = 5,
+        max_consecutive_misfires: int = 5,
     ):
 
         self.node_id = node_id
         self.total_nodes = total_nodes
         self.p = initial_p
-        self.termination_handover = termination_handover
+        self.max_consecutive_misfires = max_consecutive_misfires
         self.overall_fired_count = 0
 
         if self.node_id == 0:
@@ -123,8 +123,8 @@ class Zunder:
 
             # Received token
             current_time = time.time()
-            consecutive_quite_handover = 0
-            consecutive_quite_handover = int(data.decode().split(":")[-1])
+            consecutive_misfires = 0
+            consecutive_misfires = int(data.decode().split(":")[-1])
 
             if self.node_id == 0:
                 # Node 0 is responsible for collecting statistics
@@ -139,16 +139,16 @@ class Zunder:
 
             if should_fire:
                 self.fire()
-                consecutive_quite_handover = 0
+                consecutive_misfires = 0
                 time.sleep(0.5)  # Give time for other Nodes to watch the firework
             else:
-                consecutive_quite_handover += 1
+                consecutive_misfires += 1
                 print(f"Node {self.node_id} did not fire this round p={self.p:.6f}")
 
             # Check termination condition
-            if self.termination_handover <= consecutive_quite_handover:
+            if self.max_consecutive_misfires <= consecutive_misfires:
                 print(
-                    f"Node {self.node_id} initiating termination after {str(consecutive_quite_handover)} quiet rounds"
+                    f"Node {self.node_id} initiating termination after {str(consecutive_misfires)} quiet rounds"
                 )
                 self.multicast(TERMINATE)
                 time.sleep(0.5)  # Give time for multicast to propagate
@@ -159,7 +159,7 @@ class Zunder:
             self.p = self.p / 2
 
             # Forward token to next node
-            msg = TOKEN + b":" + str(consecutive_quite_handover).encode()
+            msg = TOKEN + b":" + str(consecutive_misfires).encode()
             self.forward(msg)
 
         elif data == TERMINATE:

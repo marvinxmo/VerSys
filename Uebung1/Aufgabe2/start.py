@@ -15,7 +15,12 @@ from Zunder import Zunder, get_local_ip  # Import get_local_ip if it's in Zunder
 
 
 def run_node_thread(
-    port, is_host, host_ip=None, initial_p=0.5, termination_handover=3, expected_nodes=1
+    port,
+    is_host,
+    host_ip=None,
+    initial_p=0.5,
+    max_consecutive_misfires=3,
+    expected_nodes=1,
 ):
     """Runs a Zunder node in a separate thread."""
     try:
@@ -24,7 +29,7 @@ def run_node_thread(
             is_host=is_host,
             host_ip=host_ip,
             initial_p=initial_p,
-            max_consecutive_handover=termination_handover,
+            max_consecutive_handover=max_consecutive_misfires,
             expected_nodes=expected_nodes,
         )
         node.run()  # This will block until the node's simulation ends or lobby fails
@@ -127,13 +132,13 @@ def main():
         ).ask()
         initial_p = float(initial_p_str) if initial_p_str else 0.5
 
-        term_handover_str = q.text(
+        max_misfires = q.text(
             "Enter maximum consecutive misfires (e.g., 3): ",
             default="5",
             validate=lambda x: (x.isdigit() and int(x) > 0)
             or "Please enter a positive integer.",
         ).ask()
-        term_handover = int(term_handover_str) if term_handover_str else 5
+        max_consecutive_misfires = int(max_misfires) if max_misfires else 5
 
         expected_nodes_str = q.text(
             "Enter total number of nodes expected (including this host, min 1): ",
@@ -144,7 +149,7 @@ def main():
         expected_nodes = int(expected_nodes_str) if expected_nodes_str else 2
 
         print(
-            f"Starting Host on port {lobby_port} with p={initial_p}, max_consecutive_misfires={term_handover}, n={expected_nodes}"
+            f"Starting Host on port {lobby_port} with p={initial_p}, max_consecutive_misfires={max_consecutive_misfires}, n={expected_nodes}"
         )
         print("For Joiners:")
         print(f"    IP: {my_ip}")
@@ -155,7 +160,7 @@ def main():
             port=lobby_port,
             is_host=True,
             initial_p=initial_p,
-            termination_handover=term_handover,
+            max_consecutive_misfires=max_consecutive_misfires,
             expected_nodes=expected_nodes,
         )
 
@@ -180,7 +185,7 @@ def main():
             port=lobby_port,
             is_host=False,
             host_ip=host_ip_to_join,
-            # Client does not set p, term_handover, expected_nodes; it gets them from host
+            # Client does not set p, max_consecutive_misfires, expected_nodes; it gets them from host
         )
 
     # The run_node_thread will block, so the script effectively waits here
