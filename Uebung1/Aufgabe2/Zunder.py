@@ -419,7 +419,7 @@ class Zunder:
                             is_from_expected_sender = True
 
                     if is_from_expected_sender:
-                        print(f"{10*"-"}")
+                        print(f"{10*'-'}")
                         print(f"Received TOKEN from Node {expected_prev_node_id}.")
                         self._handle_token_message(data)
                     else:

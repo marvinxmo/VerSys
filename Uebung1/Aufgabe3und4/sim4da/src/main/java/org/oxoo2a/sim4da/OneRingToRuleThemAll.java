@@ -5,9 +5,9 @@ import java.util.List;
 
 public class OneRingToRuleThemAll {
 
-    final int ringSize = 3;
-    final float init_p_fire = 1f;
-    final int max_consecutive_misfires = 5;
+    final int ringSize = 20;
+    final float init_p_fire = 0.8f;
+    final int max_consecutive_misfires = 6;
 
     class Coordinator {
 
