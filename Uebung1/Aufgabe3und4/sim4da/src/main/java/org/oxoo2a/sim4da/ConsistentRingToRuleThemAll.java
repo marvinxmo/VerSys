@@ -7,7 +7,7 @@ public class ConsistentRingToRuleThemAll {
 
     final int ringSize = 20;
     final float init_p_fire = 0.8f;
-    final int max_consecutive_misfires = 10;
+    final int max_consecutive_misfires = 6;
     final int waitTime = 15000;
 
     class Coordinator {
