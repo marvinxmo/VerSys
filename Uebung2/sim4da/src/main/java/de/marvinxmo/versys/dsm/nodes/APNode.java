@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import de.marvinxmo.versys.Message;
@@ -20,20 +21,25 @@ import de.marvinxmo.versys.dsm.monitoring.ConsistencyMetrics;
  * - Local reads (always available)
  * - Conflict resolution using "Last Write Wins" with logical timestamps
  * - High availability, eventual consistency
- * - Random pauses between operations
+ * - Separate message processing loop that can be disabled during partitioning
  */
 public class APNode extends DSMNode {
 
     private final ConsistencyMetrics metrics;
     private final Map<String, VersionedValue> localStorage;
-    // public final ExecutorService executorService;
     private final AtomicBoolean running;
+
+    // Futures to control individual tasks
+    private Future<?> messageProcessingTask;
+    private Future<?> writeLoopTask;
+    private Future<?> readLoopTask;
+    private Future<?> partitionTask;
 
     public APNode(String name) {
         super(name);
         this.localStorage = new ConcurrentHashMap<>();
         this.metrics = new ConsistencyMetrics();
-        this.executorService = Executors.newFixedThreadPool(3);
+        this.executorService = Executors.newFixedThreadPool(4); // Increased to 4 for message processing
         this.running = new AtomicBoolean(false);
     }
 
@@ -53,7 +59,7 @@ public class APNode extends DSMNode {
 
         @Override
         public String toString() {
-            return String.format("VersionedValue[value=%i, timestamp=%d, origin=%s]",
+            return String.format("VersionedValue[value=%d, timestamp=%d, origin=%s]",
                     value, timestamp, lastUpdater);
         }
     }
@@ -61,74 +67,70 @@ public class APNode extends DSMNode {
     @Override
     public void engage() {
         running.set(true);
+        this.messageProcessingEnabled = true;
 
-        executorService.submit(this::randomWriteLoop);
-        executorService.submit(this::randomReadLoop);
-        executorService.submit(this::simulateNetworkPartition);
+        // Start all concurrent tasks
+        messageProcessingTask = executorService.submit(this::messageProcessingLoop);
+        writeLoopTask = executorService.submit(this::randomWriteLoop);
+        readLoopTask = executorService.submit(this::randomReadLoop);
+        partitionTask = executorService.submit(this::partitionControlLoop);
 
         System.out.printf("[%s] AP Node started with concurrent operations%n", getName());
 
-        // Continuously process incoming messages
-        while (this.isAlive() && !Thread.currentThread().isInterrupted()) {
-
-            // // Wait if partitioned
-            // if (this.isPartitioned()) {
-            // sleep(500); // Short sleep while partitioned
-            // continue; // Go back to start of outer loop
-            // }
-
-            // Process messages while not partitioned
-            while (!this.isPartitioned() && this.isAlive() && !Thread.currentThread().isInterrupted()) {
-                Message message = null;
-
-                try {
-                    message = receive();
-                } catch (NullPointerException e) {
-                    // Handle case where receive returns null due to interruption
-                }
-
-                if (Thread.currentThread().isInterrupted() || !this.isAlive()) {
-                    break;
-                }
-
-                if (message == null) {
-                    // Could be due to interruption or no messages available
-                    sleep(10); // Small delay to prevent busy waiting
-                    if (Thread.currentThread().isInterrupted()) {
-                        break;
-                    }
-                    continue;
-                }
-
-                if ("WRITE_PROPAGATION".equals(message.query("type"))) {
-                    try {
-                        handleWritePropagation(message);
-                    } catch (Exception e) {
-                        System.err.printf("[%s] Error handling DSM message: %s%n",
-                                NodeName(), e.getMessage());
-                    }
-                } else {
-                    // Handle other sync message types if needed
-                    System.out.printf("[%s] Received unsupported DSM message type: %s%n",
-                            NodeName(), message.query("type"));
-                }
+        // Main thread just waits for shutdown
+        try {
+            while (this.isAlive() && !Thread.currentThread().isInterrupted()) {
+                sleep(1000); // Check every second
             }
+        } finally {
+            System.out.printf("[%s] Main engage loop ending%n", getName());
         }
     }
 
-    protected void handleWritePropagation(Message message) {
-        String key = message.query("key");
-        int value = message.queryInteger("value");
-        long timestamp = (long) message.queryFloat("timestamp");
-        String originNodeId = message.query("originNodeId");
+    /**
+     * Handle incoming messages and update local storage
+     */
+    public void handleIncomingMessage(Message message) {
+        String messageType = message.query("type");
 
-        // Update local storage with the new value if it's more recent
-        VersionedValue currentValue = localStorage.get(key);
-        if (currentValue == null || timestamp > currentValue.timestamp) {
-            VersionedValue newValue = new VersionedValue(value, timestamp, originNodeId);
-            localStorage.put(key, newValue);
-            System.out.printf("[%s] Received update (%s = %s) from %s%n",
-                    getName(), key, value, originNodeId);
+        if ("WRITE_PROPAGATION".equals(messageType)) {
+            handleWritePropagation(message);
+        } else {
+            System.out.printf("[%s] Received unsupported message type: %s%n",
+                    getName(), messageType);
+        }
+    }
+
+    /**
+     * Handle write propagation messages and update local storage
+     */
+    private void handleWritePropagation(Message message) {
+        try {
+            String key = message.query("key");
+            int value = message.queryInteger("value");
+            String timestampStr = message.query("timestamp");
+            long timestamp = Long.parseLong(timestampStr);
+            String originNodeId = message.query("originNodeId");
+
+            // Update local storage with the new value if it's more recent
+            VersionedValue currentValue = localStorage.get(key);
+
+            if (currentValue == null) {
+                currentValue = new VersionedValue(0, 0, "none");
+            }
+
+            if (timestamp >= currentValue.timestamp) {
+                VersionedValue newValue = new VersionedValue(value, timestamp, originNodeId);
+                localStorage.put(key, newValue);
+                System.out.printf("[%s] Updated from propagation: %s = %s (from %s)%n",
+                        getName(), key, value, originNodeId);
+            } else {
+                System.out.printf("[%s] Ignored propagation: %s = %s (timestamp %d < %d)%n",
+                        getName(), key, value, timestamp, currentValue.timestamp);
+            }
+        } catch (Exception e) {
+            System.err.printf("[%s] Error handling write propagation: %s%n",
+                    getName(), e.getMessage());
         }
     }
 
@@ -154,24 +156,17 @@ public class APNode extends DSMNode {
                     new_value = new VersionedValue(prev_value.value + 1, System.currentTimeMillis(), getName());
                 }
 
-                if (Thread.currentThread().isInterrupted() || !this.isAlive()) {
-                    break;
-                }
-
+                // Always perform local write (AP model)
                 localStorage.put(key, new_value);
-                int latency = getLatencyMs();
 
-                System.out.printf("[%s] WRITE: %s = %s (timestamp: %d, latency: %d)%n",
-                        getName(), key, new_value.value, new_value.timestamp, latency);
+                boolean partitioned = this.messageProcessingEnabled;
+                System.out.printf("[%s] WRITE: %s = %s (timestamp: %d) [Partitioned: %s]%n",
+                        getName(), key, new_value.value, new_value.timestamp, partitioned);
 
-                sleep(latency);
+                // Try to broadcast (will fail during partition due to disabled message
+                // processing)
+                if (this.messageProcessingEnabled) {
 
-                if (Thread.currentThread().isInterrupted() || !this.isAlive()) {
-                    break;
-                }
-
-                if (!this.isPartitioned()) {
-                    // Simple broadcast without DSMSyncMessage
                     try {
                         Message message = new Message();
                         message.add("type", "WRITE_PROPAGATION");
@@ -180,19 +175,29 @@ public class APNode extends DSMNode {
                         message.add("timestamp", String.valueOf(new_value.timestamp));
                         message.add("originNodeId", getName());
 
+                        int latency = this.getLatencyMs();
+                        System.out.printf("[%s] Broadcasted write propagation for %s with delay of %d ms %n", getName(),
+                                key, latency);
+                        sleep(latency);
+
                         broadcast(message);
 
                     } catch (Exception broadcastError) {
                         System.err.printf("[%s] Broadcast failed: %s%n", getName(), broadcastError.getMessage());
                     }
+                } else {
+                    System.out.printf("[%s] Skipping broadcast - node is partitioned%n", getName());
                 }
-                // metrics.recordWrite(true, System.currentTimeMillis() - startTime);
 
             } catch (Exception e) {
-                // metrics.recordWrite(false, System.currentTimeMillis() - startTime);
-                System.err.printf("[%s] Write failed: %s%n", getName(), e.getMessage());
+                System.err.printf("[%s] Write operation failed: %s%n", getName(), e.getMessage());
+                if (Thread.currentThread().isInterrupted()) {
+                    break;
+                }
             }
         }
+
+        System.out.printf("[%s] Write loop ended%n", getName());
     }
 
     public void randomReadLoop() {
@@ -210,21 +215,50 @@ public class APNode extends DSMNode {
                 String key = this.getRandomKey();
                 VersionedValue read = localStorage.get(key);
 
+                boolean partitioned = !this.messageProcessingEnabled;
+
                 if (read == null) {
-                    System.out.printf("[%s] READ: %s not initialized %n", getName(), key);
+                    System.out.printf("[%s] READ: %s not initialized [Partitioned: %s]%n",
+                            getName(), key, partitioned);
                     continue;
                 }
 
-                System.out.printf("[%s] READ: %s = %s (written by Node %s at %d)%n",
-                        getName(), key, read.value, read.lastUpdater, read.timestamp);
-
-                // metrics.recordWrite(true, System.currentTimeMillis() - startTime);
+                System.out.printf("[%s] READ: %s = %s (written by %s at %d) [Partitioned: %s]%n",
+                        getName(), key, read.value, read.lastUpdater, read.timestamp, partitioned);
 
             } catch (Exception e) {
-                // metrics.recordWrite(false, System.currentTimeMillis() - startTime);
-                System.err.printf("[%s] Read failed: %s%n", getName(), e.getMessage());
+                System.err.printf("[%s] Read operation failed: %s%n", getName(), e.getMessage());
+                if (Thread.currentThread().isInterrupted()) {
+                    break;
+                }
             }
         }
+
+        System.out.printf("[%s] Read loop ended%n", getName());
+    }
+
+    /**
+     * Enhanced shutdown method
+     */
+    @Override
+    public void shutdown() {
+        System.out.printf("[%s] Shutting down node...%n", getName());
+
+        // Stop message processing
+        this.messageProcessingEnabled = false;
+
+        // Cancel all tasks
+        if (messageProcessingTask != null)
+            messageProcessingTask.cancel(true);
+        if (writeLoopTask != null)
+            writeLoopTask.cancel(true);
+        if (readLoopTask != null)
+            readLoopTask.cancel(true);
+        if (partitionTask != null)
+            partitionTask.cancel(true);
+
+        // Call parent shutdown
+        super.shutdown();
     }
 
     /**
