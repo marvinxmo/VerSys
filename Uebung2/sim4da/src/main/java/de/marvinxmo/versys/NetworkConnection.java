@@ -73,4 +73,5 @@ public class NetworkConnection {
     public void interrupt() {
         thread.interrupt();
     }
+
 }

@@ -67,29 +67,40 @@ public class APNode extends DSMNode {
         executorService.submit(this::simulateNetworkPartition);
 
         System.out.printf("[%s] AP Node started with concurrent operations%n", getName());
-        // Continuously process incoming messages
 
-        while (this.isAlive()) {
+        // Continuously process incoming messages
+        while (this.isAlive() && !Thread.currentThread().isInterrupted()) {
+
+            // // Wait if partitioned
+            // if (this.isPartitioned()) {
+            // sleep(500); // Short sleep while partitioned
+            // continue; // Go back to start of outer loop
+            // }
+
+            // Process messages while not partitioned
             while (!this.isPartitioned() && this.isAlive() && !Thread.currentThread().isInterrupted()) {
                 Message message = null;
 
                 try {
                     message = receive();
                 } catch (NullPointerException e) {
+                    // Handle case where receive returns null due to interruption
                 }
 
-                if (Thread.currentThread().isInterrupted() || !this.isAlive() || this.isPartitioned()) {
+                if (Thread.currentThread().isInterrupted() || !this.isAlive()) {
                     break;
                 }
 
                 if (message == null) {
                     // Could be due to interruption or no messages available
                     sleep(10); // Small delay to prevent busy waiting
-                    // Check if thread was interrupted during sleep
+                    if (Thread.currentThread().isInterrupted()) {
+                        break;
+                    }
                     continue;
                 }
 
-                if (message.query("type") == "WRITE_PROPAGATION") {
+                if ("WRITE_PROPAGATION".equals(message.query("type"))) {
                     try {
                         handleWritePropagation(message);
                     } catch (Exception e) {
@@ -102,7 +113,6 @@ public class APNode extends DSMNode {
                             NodeName(), message.query("type"));
                 }
             }
-
         }
     }
 
@@ -156,25 +166,26 @@ public class APNode extends DSMNode {
 
                 sleep(latency);
 
-                if (Thread.currentThread().isInterrupted() || !this.isAlive() || this.isPartitioned()) {
+                if (Thread.currentThread().isInterrupted() || !this.isAlive()) {
                     break;
                 }
 
-                // Simple broadcast without DSMSyncMessage
-                try {
-                    Message message = new Message();
-                    message.add("type", "WRITE_PROPAGATION");
-                    message.add("key", key);
-                    message.add("value", String.valueOf(new_value.value));
-                    message.add("timestamp", String.valueOf(new_value.timestamp));
-                    message.add("originNodeId", getName());
+                if (!this.isPartitioned()) {
+                    // Simple broadcast without DSMSyncMessage
+                    try {
+                        Message message = new Message();
+                        message.add("type", "WRITE_PROPAGATION");
+                        message.add("key", key);
+                        message.add("value", String.valueOf(new_value.value));
+                        message.add("timestamp", String.valueOf(new_value.timestamp));
+                        message.add("originNodeId", getName());
 
-                    broadcast(message);
+                        broadcast(message);
 
-                } catch (Exception broadcastError) {
-                    System.err.printf("[%s] Broadcast failed: %s%n", getName(), broadcastError.getMessage());
+                    } catch (Exception broadcastError) {
+                        System.err.printf("[%s] Broadcast failed: %s%n", getName(), broadcastError.getMessage());
+                    }
                 }
-
                 // metrics.recordWrite(true, System.currentTimeMillis() - startTime);
 
             } catch (Exception e) {

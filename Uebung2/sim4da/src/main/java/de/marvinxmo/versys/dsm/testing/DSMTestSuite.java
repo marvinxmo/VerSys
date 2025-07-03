@@ -10,7 +10,7 @@ import de.marvinxmo.versys.Simulator;
 import de.marvinxmo.versys.dsm.core.CAPType;
 import de.marvinxmo.versys.dsm.core.DSMNode;
 import de.marvinxmo.versys.dsm.monitoring.ConsistencyMonitor;
-import de.marvinxmo.versys.dsm.nodes.APNode;
+import de.marvinxmo.versys.dsm.nodes.APNode3;
 
 /**
  * Comprehensive test application for all three DSM implementations
@@ -33,7 +33,7 @@ public class DSMTestSuite {
         double latencyStdMs = 30;
 
         boolean simulateNetworkPartitions = true;
-        double partitionProbability = 0.1; // Probability of partitioning during simulation
+        double partitionProbability = 0.9; // Probability of partitioning during simulation
         double partitionDurationSec = 4; // Simulate random network failures
 
         int minPauseMs = 100; // Minimum pause between read/write operations
@@ -140,7 +140,7 @@ public class DSMTestSuite {
         ConsistencyMonitor monitor = new ConsistencyMonitor(nodeNames, config.capType);
 
         for (String nodeName : nodeNames) {
-            DSMNode node = new APNode(nodeName);
+            DSMNode node = new APNode3(nodeName);
             nodes.put(nodeName, node);
         }
 
