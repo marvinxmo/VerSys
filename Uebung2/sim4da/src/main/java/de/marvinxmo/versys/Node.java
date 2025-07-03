@@ -35,8 +35,11 @@ public class Node {
         try {
             Thread.sleep(millis);
         } catch (InterruptedException e) {
+            // Preserve the interrupted status
+            Thread.currentThread().interrupt();
+            // Let the caller handle the interruption by checking Thread.interrupted()
         }
     }
 
-    private NetworkConnection nc = null;
+    protected NetworkConnection nc = null;
 }

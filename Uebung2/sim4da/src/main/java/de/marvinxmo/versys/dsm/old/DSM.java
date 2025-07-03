@@ -1,4 +1,4 @@
-package de.marvinxmo.versys.dsm;
+package de.marvinxmo.versys.dsm.old;
 
 /**
  * Interface for Distributed Shared Memory implementations

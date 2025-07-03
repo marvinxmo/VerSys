@@ -1,4 +1,4 @@
-package de.marvinxmo.versys.dsm;
+package de.marvinxmo.versys.dsm.old;
 
 import de.marvinxmo.versys.Message;
 import de.marvinxmo.versys.Node;

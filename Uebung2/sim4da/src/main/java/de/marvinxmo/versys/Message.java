@@ -11,9 +11,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 public class Message {
 
+    private Map<String, Map<String, String>> content = new HashMap<>();
+    private static final ObjectMapper serializer = new ObjectMapper();
+
     public Message() {
-        addCategory("Header");
-        addCategory("Payload");
     }
 
     public Message(Message other) {
@@ -25,27 +26,11 @@ public class Message {
         }
     }
 
-    public void addCategory(String category) {
-        if (content.containsKey(category)) {
-            System.err.println("Adding category " + category + " twice! Ignoring.");
-            return;
-        }
-        content.put(category, new HashMap<>());
-    }
-
-    public void removeCategory(String category) {
-        if (category.equals("Header") || category.equals("Payload")) {
-            System.err.println("Cannot remove category " + category + "!");
-            return;
-        }
-        if (!content.containsKey(category)) {
-            System.err.println("Removing non-existent category " + category + "!");
-            return;
-        }
-        content.remove(category);
-    }
-
     public Message addWithCategory(String category, String key, String value) {
+        // Erstelle die Kategorie, falls sie nicht existiert
+        if (!content.containsKey(category)) {
+            content.put(category, new HashMap<>());
+        }
         content.get(category).put(key, value);
         return this;
     }
@@ -75,7 +60,11 @@ public class Message {
     }
 
     public String queryWithCategory(String category, String key) {
-        return content.get(category).get(key);
+        Map<String, String> categoryMap = content.get(category);
+        if (categoryMap == null) {
+            return null;
+        }
+        return categoryMap.get(key);
     }
 
     public String query(String key) {
@@ -143,6 +132,4 @@ public class Message {
         return result;
     }
 
-    private Map<String, Map<String, String>> content = new HashMap<>();
-    private static final ObjectMapper serializer = new ObjectMapper();
 }
