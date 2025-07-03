@@ -106,7 +106,7 @@ public abstract class DSMNode extends Node {
             }
         }
 
-        System.out.printf("[%s] Message processing loop ended%n", getName());
+        // System.out.printf("[%s] Message processing loop ended%n", getName());
     }
 
     /**
@@ -139,7 +139,7 @@ public abstract class DSMNode extends Node {
             }
         }
 
-        System.out.printf("[%s] Partition control loop ended%n", getName());
+        // System.out.printf("[%s] Partition control loop ended%n", getName());
     }
 
     /**
@@ -156,16 +156,13 @@ public abstract class DSMNode extends Node {
         int partitionDurationMs = (int) (partitionDurationSec * 1000);
         System.out.printf("[%s] Partition will last %d ms%n", getName(), partitionDurationMs);
 
-        // Schedule partition end
-        executorService.submit(() -> {
-            try {
-                sleep(partitionDurationMs);
-                endNetworkPartition();
-            } catch (Exception e) {
-                System.err.printf("[%s] Error ending partition: %s%n", getName(), e.getMessage());
-            }
-        });
-    }
+        try {
+            sleep(partitionDurationMs);
+            endNetworkPartition();
+        } catch (Exception e) {
+            System.err.printf("[%s] Error ending partition: %s%n", getName(), e.getMessage());
+        }
+    };
 
     /**
      * End network partition by re-enabling message processing

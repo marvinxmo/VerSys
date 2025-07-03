@@ -1,337 +1,336 @@
 package de.marvinxmo.versys.dsm.nodes;
 
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import de.marvinxmo.versys.Message;
-import de.marvinxmo.versys.UnknownNodeException;
-import de.marvinxmo.versys.dsm.core.CAPType;
 import de.marvinxmo.versys.dsm.core.DSMNode;
-import de.marvinxmo.versys.dsm.core.DSMSyncMessage;
-import de.marvinxmo.versys.dsm.monitoring.ConsistencyMetrics;
+import de.marvinxmo.versys.utils.RandomString;
 
 /**
- * CA Node Implementation (Consistency + Availability)
+ * AP Node Implementation (Availability + Partition Tolerance)
  * 
  * Features:
- * - Centralized coordination (assumes no network partitions)
- * - Synchronous operations with immediate consistency
- * - All nodes maintain synchronized state
- * - High consistency and availability, but no partition tolerance
- * - Random pauses between operations
+ * - Local copies of data on each node
+ * - Asynchronous write propagation via gossip protocol
+ * - Local reads (always available)
+ * - Conflict resolution using "Last Write Wins" with logical timestamps
+ * - High availability, eventual consistency
+ * - Separate message processing loop that can be disabled during partitioning
  */
 public class CANode extends DSMNode {
 
-    private final Map<String, String> localStorage;
-    private final Set<String> knownNodes;
-    private final boolean isCentralCoordinator;
-    private final String coordinatorNodeId;
-    private final Random random;
-    private final ConsistencyMetrics metrics;
-    private volatile long logicalTimestamp;
+    // This is the DSMs data storage
+    public Map<String, VersionedValue> storage;
+    public Message lastCoordinatorResponse;
 
-    // Configuration parameters
-    private static final int MIN_PAUSE_MS = 100;
-    private static final int MAX_PAUSE_MS = 800;
+    private final AtomicBoolean running;
 
-    public CANode(String name, Set<String> knownNodes, boolean isCentralCoordinator) {
+    // Futures to control individual tasks
+    private Future<?> messageProcessingTask;
+    private Future<?> writeLoopTask;
+    private Future<?> readLoopTask;
+    private Future<?> partitionTask;
+
+    public CANode(String name) {
         super(name);
-        this.localStorage = new ConcurrentHashMap<>();
-        this.knownNodes = knownNodes;
-        this.isCentralCoordinator = isCentralCoordinator;
-        this.coordinatorNodeId = determineCoordinator(knownNodes);
-        this.random = new Random();
-        this.metrics = new ConsistencyMetrics();
-        this.logicalTimestamp = 0;
+        this.executorService = Executors.newFixedThreadPool(4); // Increased to 4 for message processing
+        this.running = new AtomicBoolean(false);
+        this.storage = new ConcurrentHashMap<>();
+
+        if (name.equals("Coordinator")) {
+            for (String key : KEYS_FOR_DSM) {
+                this.storage.put(key, new VersionedValue("empty", 0, "none"));
+            }
+        }
+    }
+
+    /**
+     * Represents a value with version information for conflict resolution in AP
+     */
+    private static class VersionedValue {
+        final String value;
+        final long timestamp;
+        final String lastUpdater;
+
+        VersionedValue(String value, long timestamp, String lastUpdater) {
+            this.value = value;
+            this.timestamp = timestamp;
+            this.lastUpdater = lastUpdater;
+        }
+
+        @Override
+        public String toString() {
+            return String.format("VersionedValue[value=%d, timestamp=%d, origin=%s]",
+                    value, timestamp, lastUpdater);
+        }
     }
 
     @Override
-    protected void handleApplicationMessage(Message message) {
-        if (isDSMSyncMessage(message)) {
-            DSMSyncMessage dsmMessage = parseDSMSyncMessage(message);
-            handleSyncMessage(dsmMessage);
-        }
-    }
+    public void engage() {
+        running.set(true);
+        this.messageProcessingEnabled = true;
 
-    /**
-     * Write a value to the distributed shared memory
-     */
-    public void writeValue(String key, String value) throws Exception {
-        long startTime = System.currentTimeMillis();
+        // Start all concurrent tasks
+        messageProcessingTask = executorService.submit(this::messageProcessingLoop);
+        writeLoopTask = executorService.submit(this::randomWriteLoop);
+        readLoopTask = executorService.submit(this::randomReadLoop);
+        partitionTask = executorService.submit(this::partitionControlLoop);
 
-        if (isPartitioned()) {
-            metrics.recordWrite(false, System.currentTimeMillis() - startTime);
-            throw new Exception("CA system unavailable during partition");
-        }
+        System.out.printf("[%s] CA Node started with concurrent operations%n", getName());
 
+        // Main thread just waits for shutdown
         try {
-            // Random pause before operation
-            randomPause();
-
-            logicalTimestamp++;
-
-            if (isCentralCoordinator) {
-                // Central coordinator handles the write
-                handleCentralizedWrite(key, value);
-            } else {
-                // Non-coordinator nodes forward write requests to coordinator
-                forwardWriteToCoordinator(key, value);
+            while (this.isAlive() && !Thread.currentThread().isInterrupted()) {
+                sleep(1000); // Check every second
             }
-
-            System.out.printf("[%s] 📝 CA WRITE: %s = %s (timestamp: %d)%n",
-                    getName(), key, value, logicalTimestamp);
-
-            metrics.recordWrite(true, System.currentTimeMillis() - startTime);
-
-        } catch (Exception e) {
-            metrics.recordWrite(false, System.currentTimeMillis() - startTime);
-            throw e;
+        } finally {
+            // System.out.printf("[%s] Main engage loop ending%n", getName());
         }
     }
 
     /**
-     * Read a value from the distributed shared memory
+     * Handle incoming messages and update local storage
      */
-    public String readValue(String key) throws Exception {
-        long startTime = System.currentTimeMillis();
+    public void handleIncomingMessage(Message message) {
 
-        if (isPartitioned()) {
-            metrics.recordRead(false, false, System.currentTimeMillis() - startTime);
-            throw new Exception("CA system unavailable during partition");
-        }
+        String messageType = message.query("type");
 
-        try {
-            // Random pause before operation
-            randomPause();
-
-            // In CA system, reads are always consistent and immediately available
-            String value = localStorage.get(key);
-
-            System.out.printf("[%s] 📖 CA READ: %s = %s%n", getName(), key, value);
-
-            metrics.recordRead(true, true, System.currentTimeMillis() - startTime);
-            return value;
-        } catch (Exception e) {
-            metrics.recordRead(false, false, System.currentTimeMillis() - startTime);
-            throw e;
-        }
-    }
-
-    /**
-     * Handle incoming synchronization messages
-     */
-    private void handleSyncMessage(DSMSyncMessage message) {
-        logicalTimestamp = Math.max(logicalTimestamp, message.getTimestamp()) + 1;
-
-        switch (message.getType()) {
-            case COORDINATOR_SYNC:
-                handleCoordinatorSync(message);
-                break;
-            case WRITE_PROPAGATION:
-                handleWritePropagation(message);
-                break;
-            default:
-                // Ignore unknown message types
-                break;
-        }
-    }
-
-    /**
-     * Get the CAP type of this node
-     */
-    public CAPType getCAPType() {
-        return CAPType.CA;
-    }
-
-    /**
-     * Get consistency metrics
-     */
-    public ConsistencyMetrics getMetrics() {
-        return metrics;
-    }
-
-    /**
-     * Get current local state
-     */
-    public Map<String, String> getLocalState() {
-        return new HashMap<>(localStorage);
-    }
-
-    /**
-     * Check if this node is the coordinator
-     */
-    public boolean isCoordinator() {
-        return isCentralCoordinator || coordinatorNodeId.equals(getName());
-    }
-
-    /**
-     * Random pause between operations
-     */
-    private void randomPause() {
-        try {
-            int pauseMs = MIN_PAUSE_MS + random.nextInt(MAX_PAUSE_MS - MIN_PAUSE_MS);
-            Thread.sleep(pauseMs);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
-
-    /**
-     * Handle centralized write operation (coordinator only)
-     */
-    private void handleCentralizedWrite(String key, String value) throws Exception {
-        // Update local storage immediately
-        localStorage.put(key, value);
-
-        // Synchronously propagate to all other nodes
-        boolean success = propagateWriteSync(key, value, logicalTimestamp);
-
-        if (!success) {
-            // Rollback local change if propagation failed
-            localStorage.remove(key);
-            throw new Exception("Failed to maintain consistency - write rolled back");
-        }
-
-        System.out.printf("[%s] ✅ Coordinator processed write: %s = %s%n",
-                getName(), key, value);
-    }
-
-    /**
-     * Forward write request to coordinator
-     */
-    private void forwardWriteToCoordinator(String key, String value) throws Exception {
-        if (coordinatorNodeId.equals(getName())) {
-            // This shouldn't happen, but handle gracefully
-            handleCentralizedWrite(key, value);
+        if ("COORDINATER_READ_RESPONSE".equals(messageType)) {
+            this.lastCoordinatorResponse = message;
             return;
         }
 
-        DSMSyncMessage writeRequest = new DSMSyncMessage(
-                DSMSyncMessage.Type.COORDINATOR_SYNC,
-                key,
-                value,
-                logicalTimestamp,
-                getName(),
-                DSMSyncMessage.generateMessageId(),
-                true); // Requires response
+        if (this.getName() != "Coordinator") {
+            System.out.printf("[%s] Ignoring message - only Coordinator should get read/write requests %n", getName());
+            return;
+        }
+
+        if ("COORDINATER_WRITE_REQUEST".equals(messageType)) {
+            handleCoordinatorWrite(message);
+            return;
+        }
+
+        if ("COORDINATOR_READ_REQUEST".equals(messageType)) {
+            handleCoordinatorRead(message);
+            return;
+        }
+
+        System.out.printf("[%s] Received unsupported message type: %s%n",
+                getName(), messageType);
+
+    }
+
+    /**
+     * Handle write propagation messages and update local storage
+     */
+    private void handleCoordinatorWrite(Message message) {
 
         try {
-            sendDSMMessage(writeRequest, coordinatorNodeId);
+            String key = message.query("key");
+            String value = message.query("value");
+            String timestampStr = message.query("timestamp");
+            long timestamp = Long.parseLong(timestampStr);
+            String originNodeId = message.query("originNodeId");
 
-            // In a full implementation, we would wait for confirmation
-            // For simplicity, we assume immediate synchronous propagation
-            localStorage.put(key, value);
+            // Update local storage with the new value if it's more recent
+            VersionedValue currentValue = storage.get(key);
 
-            System.out.printf("[%s] 📤 Forwarded write to coordinator: %s = %s%n",
-                    getName(), key, value);
+            if (currentValue == null) {
+                currentValue = new VersionedValue("x", 0, "none");
+            }
+
+            if (timestamp >= currentValue.timestamp) {
+                VersionedValue newValue = new VersionedValue(value, timestamp, originNodeId);
+                storage.put(key, newValue);
+                System.out.printf("[%s] Coordinator updated Storage: %s = %s (from %s)%n",
+                        getName(), key, value, originNodeId);
+            } else {
+                System.out.printf("[%s] Received update ignored: %s = %s (timestamp %d < %d)%n",
+                        getName(), key, value, timestamp, currentValue.timestamp);
+            }
+        } catch (
+
+        Exception e) {
+            System.err.printf("[%s] Error handling request: %s%n",
+                    getName(), e.getMessage());
+        }
+    }
+
+    /**
+     * Handle read requests from the coordinator
+     */
+    private void handleCoordinatorRead(Message message) {
+        try {
+            String key = message.query("key");
+            VersionedValue value = storage.get(key);
+
+            if (value != null) {
+                Message response = new Message();
+                response.add("type", "COORDINATOR_READ_RESPONSE");
+                response.add("key", key);
+                response.add("timestamp", String.valueOf(value.timestamp));
+                response.add("originNodeId", getName());
+
+                // Send the response back to the coordinator
+                send(response, message.queryHeader("originNodeId"));
+            }
         } catch (Exception e) {
-            throw new Exception("Cannot reach coordinator: " + e.getMessage());
+            System.err.printf("[%s] Error handling read request: %s%n",
+                    getName(), e.getMessage());
         }
     }
 
-    /**
-     * Synchronously propagate write to all nodes
-     */
-    private boolean propagateWriteSync(String key, String value, long timestamp) {
-        int successCount = 0;
-        int totalNodes = knownNodes.size() - 1; // Exclude self
+    public void randomWriteLoop() {
 
-        for (String targetNode : knownNodes) {
-            if (targetNode.equals(getName())) {
-                continue; // Skip self
-            }
-
-            DSMSyncMessage syncMessage = new DSMSyncMessage(
-                    DSMSyncMessage.Type.COORDINATOR_SYNC,
-                    key,
-                    value,
-                    timestamp,
-                    getName());
-
+        while (this.isAlive() && !Thread.currentThread().isInterrupted()) {
             try {
-                sendDSMMessage(syncMessage, targetNode);
-                successCount++;
-                System.out.printf("[%s] 📤 Synced write to %s: %s = %s%n",
-                        getName(), targetNode, key, value);
+                // Random pause before operation
+                int pauseMillis = new Random().nextInt(2000, 7000);
+                sleep(pauseMillis);
+
+                if (Thread.currentThread().isInterrupted() || !this.isAlive()) {
+                    break;
+                }
+
+                String key = this.getRandomKey();
+                VersionedValue prev_value = storage.get(key);
+                VersionedValue new_value;
+                String rstr = new RandomString(8).nextString();
+
+                if (prev_value == null) {
+                    new_value = new VersionedValue(rstr, System.currentTimeMillis(), getName());
+                } else {
+                    new_value = new VersionedValue(rstr, System.currentTimeMillis(), getName());
+                }
+
+                // Try to broadcast (will fail during partition due to disabled message
+                // processing)
+                if (this.messageProcessingEnabled) {
+
+                    try {
+                        Message message = new Message();
+                        message.add("type", "COORDINATER_WRITE_REQUEST");
+                        message.add("key", key);
+                        message.add("value", String.valueOf(new_value.value));
+                        message.add("timestamp", String.valueOf(new_value.timestamp));
+                        message.add("originNodeId", getName());
+
+                        int latency = this.getLatencyMs();
+                        System.out.printf(
+                                "[%s] Send WRITE_REQUEST: %s = %s (timestamp: %d) [Partitioned: %s] [latency: %d] %n",
+                                getName(), key, new_value.value, new_value.timestamp, this.messageProcessingEnabled,
+                                latency);
+                        sleep(latency);
+
+                        send(message, "Coordinator");
+
+                    } catch (Exception sendError) {
+                        System.err.printf("[%s] Send failed: %s%n", getName(), sendError.getMessage());
+                    }
+                } else {
+                    System.out.printf("[%s] Skipping send - node is partitioned%n", getName());
+                }
+
             } catch (Exception e) {
-                System.err.printf("[%s] ❌ Failed to sync to %s: %s%n",
-                        getName(), targetNode, e.getMessage());
-                metrics.recordInconsistency("Sync failure to " + targetNode);
+                System.err.printf("[%s] Write request failed: %s%n", getName(), e.getMessage());
+                if (Thread.currentThread().isInterrupted()) {
+                    break;
+                }
             }
         }
 
-        // In CA system, we require ALL nodes to be updated for consistency
-        return successCount == totalNodes;
+        // System.out.printf("[%s] Write loop ended%n", getName());
+    }
+
+    public void randomReadLoop() {
+
+        while (this.isAlive() && !Thread.currentThread().isInterrupted()) {
+            try {
+                // Random pause before operation
+                int pauseMillis = new Random().nextInt(2000, 7000);
+                sleep(pauseMillis);
+
+                if (Thread.currentThread().isInterrupted() || !this.isAlive()) {
+                    break;
+                }
+
+                String key = this.getRandomKey();
+
+                Message message = new Message();
+                message.add("type", "COORDINATER_READ_REQUEST");
+                message.add("key", key);
+                message.add("timestamp", String.valueOf(System.currentTimeMillis()));
+                message.add("originNodeId", getName());
+
+                boolean partitioned = !this.messageProcessingEnabled;
+
+                if (partitioned) {
+                    System.out.printf("[%s] Cant send read requests atm - node is partitioned%n", getName());
+                    continue;
+                }
+
+                try {
+                    send(message, "Coordinator");
+                } catch (Exception sendError) {
+                    System.err.printf("[%s] Read request send failed: %s%n", getName(), sendError.getMessage());
+                }
+
+                while (this.lastCoordinatorResponse == null) {
+                    sleep(100); // Wait for response
+                    if (Thread.currentThread().isInterrupted()) {
+                        return; // Exit if interrupted
+                    }
+                }
+
+                Message response = this.lastCoordinatorResponse;
+
+                String value = response.query("value");
+                long timestamp = Long.parseLong(response.query("timestamp"));
+                String lastUpdater = response.query("originNodeId");
+
+                System.out.printf("[%s] Sucessfully requested READ: %s = %s (written by %s at %d) [Partitioned: %s]%n",
+                        getName(), key, value, lastUpdater, timestamp, partitioned);
+
+                this.lastCoordinatorResponse = null; // Reset for next read
+
+            } catch (Exception e) {
+                System.err.printf("[%s] Read operation failed: %s%n", getName(), e.getMessage());
+                if (Thread.currentThread().isInterrupted()) {
+                    break;
+                }
+            }
+        }
+
+        // System.out.printf("[%s] Read loop ended%n", getName());
     }
 
     /**
-     * Handle coordinator synchronization messages
+     * Enhanced shutdown method
      */
-    private void handleCoordinatorSync(DSMSyncMessage message) {
-        String key = message.getKey();
-        String value = message.getValue();
+    @Override
+    public void shutdown() {
+        System.out.printf("[%s] Shutting down node...%n", getName());
 
-        localStorage.put(key, value);
+        // Stop message processing
+        this.messageProcessingEnabled = false;
 
-        System.out.printf("[%s] 🔄 Updated from coordinator: %s = %s%n",
-                getName(), key, value);
+        // Cancel all tasks
+        if (messageProcessingTask != null)
+            messageProcessingTask.cancel(true);
+        if (writeLoopTask != null)
+            writeLoopTask.cancel(true);
+        if (readLoopTask != null)
+            readLoopTask.cancel(true);
+        if (partitionTask != null)
+            partitionTask.cancel(true);
+
+        // Call parent shutdown
+        super.shutdown();
     }
 
-    /**
-     * Handle write propagation (fallback for compatibility)
-     */
-    private void handleWritePropagation(DSMSyncMessage message) {
-        handleCoordinatorSync(message); // Same logic
-    }
-
-    /**
-     * Determine coordinator node (simple implementation: lexicographically first)
-     */
-    private String determineCoordinator(Set<String> nodes) {
-        return nodes.stream().min(String::compareTo).orElse(getName());
-    }
-
-    /**
-     * Check if a message is a DSM synchronization message
-     */
-    private boolean isDSMSyncMessage(Message message) {
-        return message.query("type") != null &&
-                message.query("key") != null &&
-                message.query("timestamp") != null &&
-                message.query("originNodeId") != null;
-    }
-
-    /**
-     * Parse a regular Message into a DSMSyncMessage
-     */
-    private DSMSyncMessage parseDSMSyncMessage(Message message) {
-        DSMSyncMessage.Type type = DSMSyncMessage.Type.valueOf(message.query("type"));
-        String key = message.query("key");
-        String value = message.query("value");
-        long timestamp = Long.parseLong(message.query("timestamp"));
-        String originNodeId = message.query("originNodeId");
-        String messageId = message.query("messageId");
-        boolean requiresResponse = Boolean.parseBoolean(message.query("requiresResponse"));
-
-        return new DSMSyncMessage(type, key, value, timestamp, originNodeId, messageId, requiresResponse);
-    }
-
-    /**
-     * Send a DSM sync message to another node
-     */
-    public void sendDSMMessage(DSMSyncMessage dsmMessage, String targetNodeId) throws UnknownNodeException {
-        Message message = new Message();
-        message.add("type", dsmMessage.getType().toString());
-        message.add("key", dsmMessage.getKey());
-        message.add("value", dsmMessage.getValue());
-        message.add("timestamp", String.valueOf(dsmMessage.getTimestamp()));
-        message.add("originNodeId", dsmMessage.getOriginNodeId());
-        message.add("messageId", dsmMessage.getMessageId());
-        message.add("requiresResponse", String.valueOf(dsmMessage.requiresResponse()));
-
-        send(message, targetNodeId);
-    }
 }

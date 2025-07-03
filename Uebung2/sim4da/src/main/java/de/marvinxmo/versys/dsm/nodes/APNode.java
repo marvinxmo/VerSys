@@ -11,6 +11,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import de.marvinxmo.versys.Message;
 import de.marvinxmo.versys.dsm.core.DSMNode;
 import de.marvinxmo.versys.dsm.monitoring.ConsistencyMetrics;
+import de.marvinxmo.versys.utils.RandomString;
 
 /**
  * AP Node Implementation (Availability + Partition Tolerance)
@@ -47,11 +48,11 @@ public class APNode extends DSMNode {
      * Represents a value with version information for conflict resolution in AP
      */
     private static class VersionedValue {
-        final int value;
+        final String value;
         final long timestamp;
         final String lastUpdater;
 
-        VersionedValue(int value, long timestamp, String lastUpdater) {
+        VersionedValue(String value, long timestamp, String lastUpdater) {
             this.value = value;
             this.timestamp = timestamp;
             this.lastUpdater = lastUpdater;
@@ -83,7 +84,7 @@ public class APNode extends DSMNode {
                 sleep(1000); // Check every second
             }
         } finally {
-            System.out.printf("[%s] Main engage loop ending%n", getName());
+            // System.out.printf("[%s] Main engage loop ending%n", getName());
         }
     }
 
@@ -107,7 +108,7 @@ public class APNode extends DSMNode {
     private void handleWritePropagation(Message message) {
         try {
             String key = message.query("key");
-            int value = message.queryInteger("value");
+            String value = message.query("value");
             String timestampStr = message.query("timestamp");
             long timestamp = Long.parseLong(timestampStr);
             String originNodeId = message.query("originNodeId");
@@ -116,7 +117,7 @@ public class APNode extends DSMNode {
             VersionedValue currentValue = localStorage.get(key);
 
             if (currentValue == null) {
-                currentValue = new VersionedValue(0, 0, "none");
+                currentValue = new VersionedValue("empty", 0, "none");
             }
 
             if (timestamp >= currentValue.timestamp) {
@@ -149,19 +150,19 @@ public class APNode extends DSMNode {
                 String key = this.getRandomKey();
                 VersionedValue prev_value = localStorage.get(key);
                 VersionedValue new_value;
+                String rstr = new RandomString(8).nextString();
 
                 if (prev_value == null) {
-                    new_value = new VersionedValue(1, System.currentTimeMillis(), getName());
+                    new_value = new VersionedValue(rstr, System.currentTimeMillis(), getName());
                 } else {
-                    new_value = new VersionedValue(prev_value.value + 1, System.currentTimeMillis(), getName());
+                    new_value = new VersionedValue(rstr, System.currentTimeMillis(), getName());
                 }
 
                 // Always perform local write (AP model)
                 localStorage.put(key, new_value);
 
-                boolean partitioned = this.messageProcessingEnabled;
                 System.out.printf("[%s] WRITE: %s = %s (timestamp: %d) [Partitioned: %s]%n",
-                        getName(), key, new_value.value, new_value.timestamp, partitioned);
+                        getName(), key, new_value.value, new_value.timestamp, this.messageProcessingEnabled);
 
                 // Try to broadcast (will fail during partition due to disabled message
                 // processing)
@@ -197,7 +198,7 @@ public class APNode extends DSMNode {
             }
         }
 
-        System.out.printf("[%s] Write loop ended%n", getName());
+        // System.out.printf("[%s] Write loop ended%n", getName());
     }
 
     public void randomReadLoop() {
@@ -234,7 +235,7 @@ public class APNode extends DSMNode {
             }
         }
 
-        System.out.printf("[%s] Read loop ended%n", getName());
+        // System.out.printf("[%s] Read loop ended%n", getName());
     }
 
     /**
