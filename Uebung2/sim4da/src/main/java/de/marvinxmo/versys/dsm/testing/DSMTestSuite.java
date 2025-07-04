@@ -12,6 +12,7 @@ import de.marvinxmo.versys.dsm.core.DSMNode;
 import de.marvinxmo.versys.dsm.monitoring.ConsistencyMonitor;
 import de.marvinxmo.versys.dsm.nodes.APNode;
 import de.marvinxmo.versys.dsm.nodes.CANode;
+import de.marvinxmo.versys.dsm.nodes.CPNode;
 
 /**
  * Comprehensive test application for all three DSM implementations
@@ -327,7 +328,7 @@ public class DSMTestSuite {
                     node = new CANode(nodeName);
                     break;
                 case CP:
-                    // node = new CPNode(nodeName, config.quorumSize);
+                    node = new CPNode(nodeName);
                     break;
                 default:
                     node = new APNode(nodeName); // Default to AP
@@ -346,6 +347,10 @@ public class DSMTestSuite {
         DSMNode.partitionDurationSec = config.partitionDurationSec;
         DSMNode.minPauseMs = config.minPauseMs;
         DSMNode.maxPauseMs = config.maxPauseMs;
+
+        if (config.capType.equals(CAPType.CP)) {
+            CPNode.approvalsNeeded = config.quorumSize;
+        }
 
         // Start simulation
         Simulator simulator = Simulator.getInstance();
