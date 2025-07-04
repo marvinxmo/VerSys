@@ -100,17 +100,17 @@ public class CANode extends DSMNode {
 
         String messageType = message.query("type");
 
-        if ("COORDINATER_READ_RESPONSE".equals(messageType)) {
+        if ("COORDINATOR_READ_RESPONSE".equals(messageType)) {
             this.lastCoordinatorResponse = message;
             return;
         }
 
-        if (this.getName() != "Coordinator") {
+        if (!this.getName().equals("Coordinator")) {
             System.out.printf("[%s] Ignoring message - only Coordinator should get read/write requests %n", getName());
             return;
         }
 
-        if ("COORDINATER_WRITE_REQUEST".equals(messageType)) {
+        if ("COORDINATOR_WRITE_REQUEST".equals(messageType)) {
             handleCoordinatorWrite(message);
             return;
         }
@@ -166,18 +166,20 @@ public class CANode extends DSMNode {
      */
     private void handleCoordinatorRead(Message message) {
         try {
-            String key = message.query("key");
-            VersionedValue value = storage.get(key);
+            String qKey = message.query("key");
+            String fromNode = message.query("fromNode");
+            VersionedValue requestedData = storage.get(qKey);
 
-            if (value != null) {
+            if (requestedData != null) {
                 Message response = new Message();
                 response.add("type", "COORDINATOR_READ_RESPONSE");
-                response.add("key", key);
-                response.add("timestamp", String.valueOf(value.timestamp));
-                response.add("originNodeId", getName());
+                response.add("key", qKey);
+                response.add("value", requestedData.value);
+                response.add("timestamp", String.valueOf(requestedData.timestamp));
+                response.add("originNodeId", String.valueOf(requestedData.lastUpdater));
 
                 // Send the response back to the coordinator
-                send(response, message.queryHeader("originNodeId"));
+                send(response, fromNode);
             }
         } catch (Exception e) {
             System.err.printf("[%s] Error handling read request: %s%n",
@@ -214,7 +216,7 @@ public class CANode extends DSMNode {
 
                     try {
                         Message message = new Message();
-                        message.add("type", "COORDINATER_WRITE_REQUEST");
+                        message.add("type", "COORDINATOR_WRITE_REQUEST");
                         message.add("key", key);
                         message.add("value", String.valueOf(new_value.value));
                         message.add("timestamp", String.valueOf(new_value.timestamp));
@@ -262,10 +264,10 @@ public class CANode extends DSMNode {
                 String key = this.getRandomKey();
 
                 Message message = new Message();
-                message.add("type", "COORDINATER_READ_REQUEST");
+                message.add("type", "COORDINATOR_READ_REQUEST");
                 message.add("key", key);
                 message.add("timestamp", String.valueOf(System.currentTimeMillis()));
-                message.add("originNodeId", getName());
+                message.add("fromNode", getName());
 
                 boolean partitioned = !this.messageProcessingEnabled;
 
@@ -274,8 +276,12 @@ public class CANode extends DSMNode {
                     continue;
                 }
 
+                this.lastCoordinatorResponse = null; // Reset response before sending
+
                 try {
                     send(message, "Coordinator");
+                    System.out.println(String.format("[%s] Sent READ_REQUEST for key: %s",
+                            getName(), key, partitioned));
                 } catch (Exception sendError) {
                     System.err.printf("[%s] Read request send failed: %s%n", getName(), sendError.getMessage());
                 }
@@ -293,7 +299,8 @@ public class CANode extends DSMNode {
                 long timestamp = Long.parseLong(response.query("timestamp"));
                 String lastUpdater = response.query("originNodeId");
 
-                System.out.printf("[%s] Sucessfully requested READ: %s = %s (written by %s at %d) [Partitioned: %s]%n",
+                System.out.printf(
+                        "[%s] Sucessfully received READ_RESPONSE: %s = %s (written by %s at %d) [Partitioned: %s]%n",
                         getName(), key, value, lastUpdater, timestamp, partitioned);
 
                 this.lastCoordinatorResponse = null; // Reset for next read

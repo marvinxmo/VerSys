@@ -34,7 +34,7 @@ public class DSMTestSuite {
         double latencyStdMs = 30;
 
         boolean simulateNetworkPartitions = true;
-        double partitionProbability = 0.9; // Probability of partitioning during simulation
+        double partitionProbability = 0.1; // Probability of partitioning during simulation
         double partitionDurationSec = 4; // Simulate random network failures
 
         int minPauseMs = 1000; // Minimum pause between read/write operations
