@@ -12,6 +12,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import de.marvinxmo.versys.Message;
 import de.marvinxmo.versys.NetworkConnection;
 import de.marvinxmo.versys.dsm.core.DSMNode;
+import de.marvinxmo.versys.utils.ColorPrinter;
 import de.marvinxmo.versys.utils.RandomString;
 
 /**
@@ -66,6 +67,14 @@ public class CPNode extends DSMNode {
             System.out.printf("[%s] Started new quorum %s for [%s=%s] %n",
                     CPNode.this.getName(), id, keyForEdit, newValue);
 
+            sleep(5000);
+
+            if (this.isActive) {
+                ColorPrinter.printRed(String.format(
+                        "[%s] CP INCONSISTENCY DETECTED: Quorum %s [%s = %s] is still active after 5 seconds - this indicates a potential network partition or failure to achieve quorum for key '%s'",
+                        getName(), id, keyForEdit, newValue, keyForEdit));
+            }
+
         }
 
         @Override
@@ -104,8 +113,15 @@ public class CPNode extends DSMNode {
                         String approverNode = message.queryHeader("sender");
                         if (!approver.contains(approverNode)) {
                             approver.add(approverNode);
-                            System.out.printf("[%s] Received approval from %s for quorum %s [%s = %s]%n",
-                                    getName(), approverNode, id, keyForEdit, newValue);
+                            // System.out.printf("[%s] Received approval from %s for quorum %s [%s = %s]%n",
+                            // getName(), approverNode, id, keyForEdit, newValue);
+                        } else {
+                            // Inconsistency: Receiving duplicate approval
+                            ColorPrinter.printRed(String.format(
+                                    "[%s] CP INCONSISTENCY DETECTED: Received duplicate approval from %s for quorum %s [%s = %s] - "
+                                            +
+                                            "this indicates message duplication or network issues that could affect quorum reliability.",
+                                    getName(), approverNode, id, keyForEdit, newValue));
                         }
                         if (approver.size() >= approvalsNeeded) {
                             isActive = false; // Quorum achieved
@@ -122,12 +138,10 @@ public class CPNode extends DSMNode {
 
         public void writeToDSM() {
             if (approver.size() >= approvalsNeeded) {
+
                 VersionedValue newValueObj = new VersionedValue(newValue, System.currentTimeMillis(), this.initiator);
                 storage.put(this.keyForEdit, newValueObj);
                 System.out.printf("[%s] Quorum %s wrote to DSM: %s = %s%n",
-                        getName(), id, keyForEdit, newValue);
-            } else {
-                System.out.printf("[%s] Quorum %s did not achieve enough approvals to write: %s = %s%n",
                         getName(), id, keyForEdit, newValue);
             }
         }
@@ -178,7 +192,7 @@ public class CPNode extends DSMNode {
         messageProcessingTask = executorService.submit(this::messageProcessingLoop);
         writeLoopTask = executorService.submit(this::randomWriteLoop);
         readLoopTask = executorService.submit(this::randomReadLoop);
-        partitionTask = executorService.submit(this::partitionControlLoop);
+        partitionTask = executorService.submit(this::partitionControl);
 
         System.out.printf("[%s] CP Node started with concurrent operations%n", getName());
 
@@ -247,7 +261,7 @@ public class CPNode extends DSMNode {
 
         while (this.isAlive() && !Thread.currentThread().isInterrupted()) {
             // Random pause before operation
-            int pauseMillis = new Random().nextInt(2000, 7000);
+            int pauseMillis = new Random().nextInt(DSMNode.minPauseMs, DSMNode.maxPauseMs);
             sleep(pauseMillis);
 
             if (Thread.currentThread().isInterrupted() || !this.isAlive()) {
@@ -269,7 +283,10 @@ public class CPNode extends DSMNode {
                     System.err.printf("[%s] Quorum initiation failed: %s%n", getName(), sendError.getMessage());
                 }
             } else {
-                System.out.printf("[%s] Cant initiate quorum - node is partitioned%n", getName());
+                // Inconsistency: CP node attempting to write during partition
+                ColorPrinter.printRed(String.format(
+                        "[%s] CP INCONSISTENCY DETECTED: Write operation attempted [%s = %s] while partitioned for key '%s'",
+                        getName(), key, rstr));
             }
 
         }
@@ -282,7 +299,7 @@ public class CPNode extends DSMNode {
         while (this.isAlive() && !Thread.currentThread().isInterrupted()) {
             try {
                 // Random pause before operation
-                int pauseMillis = new Random().nextInt(2000, 7000);
+                int pauseMillis = new Random().nextInt(DSMNode.minPauseMs, DSMNode.maxPauseMs);
                 sleep(pauseMillis);
 
                 if (Thread.currentThread().isInterrupted() || !this.isAlive()) {
@@ -294,7 +311,10 @@ public class CPNode extends DSMNode {
                 boolean partitioned = !this.messageProcessingEnabled;
 
                 if (partitioned) {
-                    System.out.printf("[%s] Cant read atm - node is partitioned%n", getName());
+                    // Inconsistency: CP node attempting to read during partition
+                    ColorPrinter.printRed(String.format(
+                            "[%s] CP INCONSISTENCY DETECTED: Read operation for key %s attempted while partitioned",
+                            getName(), key));
                     continue;
                 }
 

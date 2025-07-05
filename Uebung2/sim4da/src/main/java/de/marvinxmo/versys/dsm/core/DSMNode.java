@@ -67,7 +67,11 @@ public abstract class DSMNode extends Node {
                 // Skip message processing if disabled (during partition)
                 if (!this.messageProcessingEnabled) {
                     sleep(100); // Short wait when disabled
-                    continue;
+                    if (!this.getName().equals("Coordinator")) {
+                        // If not Coordinator, continue to next iteration
+                        // Coordinator needs to receive to detect inconsistencies
+                        continue;
+                    }
                 }
 
                 Message message = null;
@@ -85,7 +89,7 @@ public abstract class DSMNode extends Node {
                     break;
                 }
 
-                if (!this.messageProcessingEnabled) {
+                if (!this.messageProcessingEnabled && !this.getName().equals("Coordinator")) {
                     continue;
                 }
 
@@ -113,34 +117,41 @@ public abstract class DSMNode extends Node {
      * Control loop for network partitioning
      * This replaces the simulateNetworkPartition method
      */
-    public void partitionControlLoop() {
+    public void partitionControl() {
 
-        while (this.isAlive() && !Thread.currentThread().isInterrupted()) {
+        try {
+
+            boolean shouldBePartitioned = simulateNetworkPartitions && Math.random() < partitionProbability;
+
+            if (!shouldBePartitioned) {
+                return;
+            }
+
+            // Wait for random interval before considering partition
+            int waitTime = new Random().nextInt(1000,
+                    (int) (DSMNode.simulationDurationSec - DSMNode.partitionDurationSec - 1) * 1000);
             try {
-                // Wait for random interval before considering partition
-                int waitTime = new Random().nextInt(5000, 15000); // 5-15 seconds
-                sleep(waitTime);
+                Thread.sleep(waitTime);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
 
-                if (!this.isAlive() || Thread.currentThread().isInterrupted()) {
-                    break;
-                }
+            if (!this.isAlive() || Thread.currentThread().isInterrupted()) {
+                return;
+            }
 
-                // Check if partition should occur
-                if (simulateNetworkPartitions && Math.random() < partitionProbability) {
-                    triggerNetworkPartition();
-                }
+            triggerNetworkPartition();
 
-            } catch (Exception e) {
-                System.err.printf("[%s] Error in partition control loop: %s%n",
-                        getName(), e.getMessage());
-                if (Thread.currentThread().isInterrupted()) {
-                    break;
-                }
+        } catch (Exception e) {
+            System.err.printf("[%s] Error in partition control loop: %s%n",
+                    getName(), e.getMessage());
+            if (Thread.currentThread().isInterrupted()) {
+                return;
             }
         }
-
-        // System.out.printf("[%s] Partition control loop ended%n", getName());
     }
+
+    // System.out.printf("[%s] Partition control loop ended%n", getName());
 
     /**
      * Trigger a network partition by disabling message processing and network
@@ -154,7 +165,6 @@ public abstract class DSMNode extends Node {
 
         // Calculate partition duration
         int partitionDurationMs = (int) (partitionDurationSec * 1000);
-        System.out.printf("[%s] Partition will last %d ms%n", getName(), partitionDurationMs);
 
         try {
             sleep(partitionDurationMs);
@@ -172,8 +182,6 @@ public abstract class DSMNode extends Node {
 
         // Re-enable message processing
         this.messageProcessingEnabled = true;
-
-        System.out.printf("[%s] Message processing re-enabled%n", getName());
     }
 
     public abstract void handleIncomingMessage(Message message);
@@ -191,5 +199,4 @@ public abstract class DSMNode extends Node {
     public boolean isAlive() {
         return isAlive;
     }
-
 }

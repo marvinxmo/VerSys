@@ -9,6 +9,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import de.marvinxmo.versys.Message;
 import de.marvinxmo.versys.dsm.core.DSMNode;
+import de.marvinxmo.versys.utils.ColorPrinter;
 import de.marvinxmo.versys.utils.RandomString;
 
 /**
@@ -79,7 +80,7 @@ public class CANode extends DSMNode {
         messageProcessingTask = executorService.submit(this::messageProcessingLoop);
         writeLoopTask = executorService.submit(this::randomWriteLoop);
         readLoopTask = executorService.submit(this::randomReadLoop);
-        partitionTask = executorService.submit(this::partitionControlLoop);
+        partitionTask = executorService.submit(this::partitionControl);
 
         System.out.printf("[%s] CA Node started with concurrent operations%n", getName());
 
@@ -110,6 +111,13 @@ public class CANode extends DSMNode {
             return;
         }
 
+        if (this.getName().equals("Coordinator") && !this.messageProcessingEnabled) {
+            ColorPrinter.printRed(String.format(
+                    "[%s] CA INCONSISTENCY DETECTED: Coordinator cant answer to  '%s', because Coordinator is partitioned.",
+                    getName(), messageType));
+            return;
+        }
+
         if ("COORDINATOR_WRITE_REQUEST".equals(messageType)) {
             handleCoordinatorWrite(message);
             return;
@@ -122,6 +130,7 @@ public class CANode extends DSMNode {
 
         System.out.printf("[%s] Received unsupported message type: %s%n",
                 getName(), messageType);
+        return;
 
     }
 
@@ -150,6 +159,10 @@ public class CANode extends DSMNode {
                 System.out.printf("[%s] Coordinator updated Storage: %s = %s (from %s)%n",
                         getName(), key, value, originNodeId);
             } else {
+                ColorPrinter.printRed(String.format(
+                        "[%s] CA INCONSISTENCY DETECTED: Coordinator received older data for key '%s' - " +
+                                "got '%s' (timestamp %d) but current is '%s' (timestamp %d).",
+                        getName(), key, value, timestamp, currentValue.value, currentValue.timestamp));
                 System.out.printf("[%s] Received update ignored: %s = %s (timestamp %d < %d)%n",
                         getName(), key, value, timestamp, currentValue.timestamp);
             }
@@ -192,7 +205,7 @@ public class CANode extends DSMNode {
         while (this.isAlive() && !Thread.currentThread().isInterrupted()) {
             try {
                 // Random pause before operation
-                int pauseMillis = new Random().nextInt(2000, 7000);
+                int pauseMillis = new Random().nextInt(DSMNode.minPauseMs, DSMNode.maxPauseMs);
                 sleep(pauseMillis);
 
                 if (Thread.currentThread().isInterrupted() || !this.isAlive()) {
@@ -225,7 +238,7 @@ public class CANode extends DSMNode {
                         int latency = this.getLatencyMs();
                         System.out.printf(
                                 "[%s] Send WRITE_REQUEST: %s = %s (timestamp: %d) [Partitioned: %s] [latency: %d] %n",
-                                getName(), key, new_value.value, new_value.timestamp, this.messageProcessingEnabled,
+                                getName(), key, new_value.value, new_value.timestamp, !this.messageProcessingEnabled,
                                 latency);
                         sleep(latency);
 
@@ -235,7 +248,12 @@ public class CANode extends DSMNode {
                         System.err.printf("[%s] Send failed: %s%n", getName(), sendError.getMessage());
                     }
                 } else {
-                    System.out.printf("[%s] Skipping send - node is partitioned%n", getName());
+                    // Inconsistency: Node is partitioned but trying to write - CA should not allow
+                    // this
+                    ColorPrinter.printRed(String.format(
+                            "[%s] CA INCONSISTENCY DETECTED: Write operation attempted while partitioned for key '%s'",
+                            getName(), key));
+                    // System.out.printf("[%s] Skipping send - node is partitioned%n", getName());
                 }
 
             } catch (Exception e) {
@@ -254,7 +272,7 @@ public class CANode extends DSMNode {
         while (this.isAlive() && !Thread.currentThread().isInterrupted()) {
             try {
                 // Random pause before operation
-                int pauseMillis = new Random().nextInt(2000, 7000);
+                int pauseMillis = new Random().nextInt(DSMNode.minPauseMs, DSMNode.maxPauseMs);
                 sleep(pauseMillis);
 
                 if (Thread.currentThread().isInterrupted() || !this.isAlive()) {
@@ -272,7 +290,9 @@ public class CANode extends DSMNode {
                 boolean partitioned = !this.messageProcessingEnabled;
 
                 if (partitioned) {
-                    System.out.printf("[%s] Cant send read requests atm - node is partitioned%n", getName());
+                    ColorPrinter.printRed(String.format(
+                            "[%s] CA INCONSISTENCY DETECTED: Read operation attempted while partitioned for key '%s'",
+                            getName(), key));
                     continue;
                 }
 

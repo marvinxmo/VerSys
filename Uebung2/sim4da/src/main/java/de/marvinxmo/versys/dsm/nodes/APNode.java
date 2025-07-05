@@ -11,6 +11,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import de.marvinxmo.versys.Message;
 import de.marvinxmo.versys.dsm.core.DSMNode;
 import de.marvinxmo.versys.dsm.monitoring.ConsistencyMetrics;
+import de.marvinxmo.versys.utils.ColorPrinter;
 import de.marvinxmo.versys.utils.RandomString;
 
 /**
@@ -74,7 +75,7 @@ public class APNode extends DSMNode {
         messageProcessingTask = executorService.submit(this::messageProcessingLoop);
         writeLoopTask = executorService.submit(this::randomWriteLoop);
         readLoopTask = executorService.submit(this::randomReadLoop);
-        partitionTask = executorService.submit(this::partitionControlLoop);
+        partitionTask = executorService.submit(this::partitionControl);
 
         System.out.printf("[%s] AP Node started with concurrent operations%n", getName());
 
@@ -121,13 +122,34 @@ public class APNode extends DSMNode {
             }
 
             if (timestamp >= currentValue.timestamp) {
+                // // Check for inconsistency - if we're overwriting a different value with
+                // similar timestamp
+                // if (currentValue.timestamp > 0 && Math.abs(timestamp -
+                // currentValue.timestamp) < 1000 &&
+                // !currentValue.value.equals(value) &&
+                // !currentValue.lastUpdater.equals(originNodeId)) {
+                // ColorPrinter.printRed(String.format("[%s] AP INCONSISTENCY DETECTED:
+                // Conflict resolution for key '%s' - " +
+                // "replacing '%s' (from %s at %d) with '%s' (from %s at %d) due to timestamp
+                // ordering",
+                // getName(), key, currentValue.value, currentValue.lastUpdater,
+                // currentValue.timestamp,
+                // value, originNodeId, timestamp));
+                // }
+
                 VersionedValue newValue = new VersionedValue(value, timestamp, originNodeId);
                 localStorage.put(key, newValue);
-                System.out.printf("[%s] Updated from propagation: %s = %s (from %s)%n",
-                        getName(), key, value, originNodeId);
+                // System.out.printf("[%s] Updated from propagation: %s = %s (from %s)%n",
+                // getName(), key, value, originNodeId);
             } else {
-                System.out.printf("[%s] Ignored propagation: %s = %s (timestamp %d < %d)%n",
-                        getName(), key, value, timestamp, currentValue.timestamp);
+                // Inconsistency: receiving older write - indicates network delay or partition
+                // healing
+                if (currentValue.timestamp - timestamp > 0) {
+                    ColorPrinter.printRed(String.format(
+                            "[%s] AP INCONSISTENCY DETECTED: Received older write for key '%s' - " +
+                                    "got '%s' (timestamp %d) but current is '%s' (timestamp %d). This indicates network partition healing or latency effects.",
+                            getName(), key, value, timestamp, currentValue.value, currentValue.timestamp));
+                }
             }
         } catch (Exception e) {
             System.err.printf("[%s] Error handling write propagation: %s%n",
@@ -140,7 +162,7 @@ public class APNode extends DSMNode {
         while (this.isAlive() && !Thread.currentThread().isInterrupted()) {
             try {
                 // Random pause before operation
-                int pauseMillis = new Random().nextInt(2000, 7000);
+                int pauseMillis = new Random().nextInt(DSMNode.minPauseMs, DSMNode.maxPauseMs);
                 sleep(pauseMillis);
 
                 if (Thread.currentThread().isInterrupted() || !this.isAlive()) {
@@ -160,9 +182,8 @@ public class APNode extends DSMNode {
 
                 // Always perform local write (AP model)
                 localStorage.put(key, new_value);
-
-                System.out.printf("[%s] WRITE: %s = %s (timestamp: %d) [Partitioned: %s]%n",
-                        getName(), key, new_value.value, new_value.timestamp, this.messageProcessingEnabled);
+                Boolean broadcasted = false;
+                int latency = 0;
 
                 // Try to broadcast (will fail during partition due to disabled message
                 // processing)
@@ -176,19 +197,30 @@ public class APNode extends DSMNode {
                         message.add("timestamp", String.valueOf(new_value.timestamp));
                         message.add("originNodeId", getName());
 
-                        int latency = this.getLatencyMs();
+                        latency = this.getLatencyMs();
                         System.out.printf("[%s] Broadcasted write propagation for %s with delay of %d ms %n", getName(),
                                 key, latency);
                         sleep(latency);
 
                         broadcast(message);
+                        broadcasted = true;
 
                     } catch (Exception broadcastError) {
                         System.err.printf("[%s] Broadcast failed: %s%n", getName(), broadcastError.getMessage());
                     }
+
                 } else {
-                    System.out.printf("[%s] Skipping broadcast - node is partitioned%n", getName());
+
+                    ColorPrinter.printRed(String.format(
+                            "[%s] AP INCONSISTENCY DETECTED: Wrote to local storage [%s=%s] but cannot broadcast write due to partitioning.",
+                            getName(), key, new_value.value));
+                    return;
+
                 }
+                System.out.printf(
+                        "[%s] WRITE: %s = %s (timestamp: %d) [Partitioned: %s] [broadcasted: %s with latency %d] %n",
+                        getName(), key, new_value.value, new_value.timestamp, !this.messageProcessingEnabled,
+                        broadcasted, latency);
 
             } catch (Exception e) {
                 System.err.printf("[%s] Write operation failed: %s%n", getName(), e.getMessage());
@@ -206,7 +238,7 @@ public class APNode extends DSMNode {
         while (this.isAlive() && !Thread.currentThread().isInterrupted()) {
             try {
                 // Random pause before operation
-                int pauseMillis = new Random().nextInt(2000, 7000);
+                int pauseMillis = new Random().nextInt(DSMNode.minPauseMs, DSMNode.maxPauseMs);
                 sleep(pauseMillis);
 
                 if (Thread.currentThread().isInterrupted() || !this.isAlive()) {
@@ -222,6 +254,17 @@ public class APNode extends DSMNode {
                     System.out.printf("[%s] READ: %s not initialized [Partitioned: %s]%n",
                             getName(), key, partitioned);
                     continue;
+                }
+
+                // Check for potential stale read during partition
+                if (partitioned && read.timestamp > 0) {
+                    long timeSinceWrite = System.currentTimeMillis() - read.timestamp;
+                    if (timeSinceWrite > 10000) { // 10 seconds old
+                        ColorPrinter.printRed(String.format(
+                                "[%s] AP INCONSISTENCY DETECTED: Potentially stale read during partition - " +
+                                        "key '%s' value '%s' is %d ms old and node is partitioned. May not reflect latest global state.",
+                                getName(), key, read.value, timeSinceWrite));
+                    }
                 }
 
                 System.out.printf("[%s] READ: %s = %s (written by %s at %d) [Partitioned: %s]%n",

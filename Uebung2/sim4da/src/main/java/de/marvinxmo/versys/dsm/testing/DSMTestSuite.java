@@ -269,9 +269,10 @@ public class DSMTestSuite {
         System.out.printf("DSM Type: %s%n", config.capType);
         System.out.printf("Nodes: %d%n", config.nodeCount);
         System.out.printf("Duration: %d seconds%n", config.simulationDurationSeconds);
-        System.out.printf("Operation pause: %d-%d ms%n", config.minPauseMs, config.maxPauseMs);
+        System.out.printf("Operation pause: %d - %d ms%n", config.minPauseMs, config.maxPauseMs);
         System.out.printf("Network latency: %s%n",
-                config.simulateNetworkLatency ? String.format("%.1f±%.1f ms", config.latencyMeanMs, config.latencyStdMs)
+                config.simulateNetworkLatency
+                        ? String.format("%.1f +- %.1f ms", config.latencyMeanMs, config.latencyStdMs)
                         : "disabled");
         System.out.printf("Network partitions: %s%n",
                 config.simulateNetworkPartitions ? String.format("%.1f%% chance, %.1fs duration",
