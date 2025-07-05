@@ -356,7 +356,7 @@ public class DSMTestSuite {
         Simulator simulator = Simulator.getInstance();
 
         // Start monitoring
-        monitor.startMonitoring();
+        // monitor.startMonitoring();
 
         System.out.println("Starting simulation...");
 
@@ -389,7 +389,7 @@ public class DSMTestSuite {
         }
 
         // Stop monitoring
-        monitor.stopMonitoring();
+        // monitor.stopMonitoring();
         simulator.shutdown();
 
         // Display results

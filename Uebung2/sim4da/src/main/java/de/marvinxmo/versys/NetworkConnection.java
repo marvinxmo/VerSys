@@ -71,7 +71,9 @@ public class NetworkConnection {
     private Runnable node_main = null;
 
     public void interrupt() {
-        thread.interrupt();
+        if (this.thread != null) {
+            this.thread.interrupt();
+        }
     }
 
 }

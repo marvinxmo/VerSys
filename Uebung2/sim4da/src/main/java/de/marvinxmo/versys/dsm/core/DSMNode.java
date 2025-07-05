@@ -182,6 +182,8 @@ public abstract class DSMNode extends Node {
 
     public abstract void randomReadLoop();
 
+    public abstract void shutdown();
+
     public boolean isPartitioned() {
         return isPartitioned;
     }
@@ -190,18 +192,4 @@ public abstract class DSMNode extends Node {
         return isAlive;
     }
 
-    public void shutdown() {
-        if (executorService != null && !executorService.isShutdown()) {
-            executorService.shutdownNow(); // This will interrupt all running tasks
-            try {
-                if (!executorService.awaitTermination(2, java.util.concurrent.TimeUnit.SECONDS)) {
-                    System.err.printf("[%s] ExecutorService did not terminate gracefully%n", getName());
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                System.err.printf("[%s] Shutdown interrupted%n", getName());
-            }
-        }
-        System.out.printf("[%s] Node shutdown completed%n", getName());
-    }
 }

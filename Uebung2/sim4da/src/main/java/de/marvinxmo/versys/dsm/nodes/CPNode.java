@@ -227,6 +227,9 @@ public class CPNode extends DSMNode {
             response.add("type", "QUORUM_APPROVAL");
 
             try {
+                if (simulateNetworkLatency) {
+                    sleep(getLatencyMs());
+                }
                 send(response, message.query("quorumId"));
                 // System.out.println("send approval to" + message.query("quorumId"));
             } catch (Exception e) {
@@ -336,8 +339,8 @@ public class CPNode extends DSMNode {
         if (partitionTask != null)
             partitionTask.cancel(true);
 
-        // Call parent shutdown
-        super.shutdown();
+        this.executorService.shutdownNow();
+
     }
 
 }

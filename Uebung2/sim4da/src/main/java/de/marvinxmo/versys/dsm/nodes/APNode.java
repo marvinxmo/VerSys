@@ -258,8 +258,8 @@ public class APNode extends DSMNode {
         if (partitionTask != null)
             partitionTask.cancel(true);
 
-        // Call parent shutdown
-        super.shutdown();
+        this.executorService.shutdownNow();
+
     }
 
     /**
