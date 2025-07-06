@@ -50,27 +50,6 @@ public class CANode extends DSMNode {
         }
     }
 
-    /**
-     * Represents a value with version information for conflict resolution in AP
-     */
-    private static class VersionedValue {
-        final String value;
-        final long timestamp;
-        final String lastUpdater;
-
-        VersionedValue(String value, long timestamp, String lastUpdater) {
-            this.value = value;
-            this.timestamp = timestamp;
-            this.lastUpdater = lastUpdater;
-        }
-
-        @Override
-        public String toString() {
-            return String.format("VersionedValue[value=%d, timestamp=%d, origin=%s]",
-                    value, timestamp, lastUpdater);
-        }
-    }
-
     @Override
     public void engage() {
         running.set(true);

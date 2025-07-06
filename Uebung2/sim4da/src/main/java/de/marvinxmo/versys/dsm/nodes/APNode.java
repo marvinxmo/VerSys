@@ -10,7 +10,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import de.marvinxmo.versys.Message;
 import de.marvinxmo.versys.dsm.core.DSMNode;
-import de.marvinxmo.versys.dsm.monitoring.ConsistencyMetrics;
 import de.marvinxmo.versys.utils.ColorPrinter;
 import de.marvinxmo.versys.utils.RandomString;
 
@@ -27,7 +26,6 @@ import de.marvinxmo.versys.utils.RandomString;
  */
 public class APNode extends DSMNode {
 
-    private final ConsistencyMetrics metrics;
     private final Map<String, VersionedValue> localStorage;
     private final AtomicBoolean running;
 
@@ -40,30 +38,8 @@ public class APNode extends DSMNode {
     public APNode(String name) {
         super(name);
         this.localStorage = new ConcurrentHashMap<>();
-        this.metrics = new ConsistencyMetrics();
         this.executorService = Executors.newFixedThreadPool(4); // Increased to 4 for message processing
         this.running = new AtomicBoolean(false);
-    }
-
-    /**
-     * Represents a value with version information for conflict resolution in AP
-     */
-    private static class VersionedValue {
-        final String value;
-        final long timestamp;
-        final String lastUpdater;
-
-        VersionedValue(String value, long timestamp, String lastUpdater) {
-            this.value = value;
-            this.timestamp = timestamp;
-            this.lastUpdater = lastUpdater;
-        }
-
-        @Override
-        public String toString() {
-            return String.format("VersionedValue[value=%d, timestamp=%d, origin=%s]",
-                    value, timestamp, lastUpdater);
-        }
     }
 
     @Override
@@ -303,13 +279,6 @@ public class APNode extends DSMNode {
 
         this.executorService.shutdownNow();
 
-    }
-
-    /**
-     * Get consistency metrics
-     */
-    public ConsistencyMetrics getMetrics() {
-        return metrics;
     }
 
     /**

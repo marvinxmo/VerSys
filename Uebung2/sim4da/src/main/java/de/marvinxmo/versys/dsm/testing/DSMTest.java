@@ -9,7 +9,6 @@ import java.util.Set;
 import de.marvinxmo.versys.Simulator;
 import de.marvinxmo.versys.dsm.core.CAPType;
 import de.marvinxmo.versys.dsm.core.DSMNode;
-import de.marvinxmo.versys.dsm.monitoring.ConsistencyMonitor;
 import de.marvinxmo.versys.dsm.nodes.APNode;
 import de.marvinxmo.versys.dsm.nodes.CANode;
 import de.marvinxmo.versys.dsm.nodes.CPNode;
@@ -19,7 +18,7 @@ import de.marvinxmo.versys.dsm.nodes.CPNode;
  * Allows user to choose between AP, CA, and CP DSM configurations
  * Includes consistency monitoring and visualization
  */
-public class DSMTestSuite {
+public class DSMTest {
 
     /**
      * Configuration for the DSM test
@@ -135,9 +134,9 @@ public class DSMTestSuite {
         }
 
         // Operation timing parameters
-        System.out.println("\n Operation Timing:");
+        System.out.println("\n Operation Timing (Nodes randomly generate read/write actions):");
 
-        System.out.printf("Minimum pause between operations (ms) [default: %d]: ", config.minPauseMs);
+        System.out.printf("Minimum pause between read/write operations (ms) [default: %d]: ", config.minPauseMs);
         String minPauseStr = scanner.nextLine().trim();
         if (!minPauseStr.isEmpty()) {
             try {
@@ -151,7 +150,7 @@ public class DSMTestSuite {
             }
         }
 
-        System.out.printf("Maximum pause between operations (ms) [default: %d]: ", config.maxPauseMs);
+        System.out.printf("Maximum pause between read/write operations (ms) [default: %d]: ", config.maxPauseMs);
         String maxPauseStr = scanner.nextLine().trim();
         if (!maxPauseStr.isEmpty()) {
             try {
@@ -213,7 +212,7 @@ public class DSMTestSuite {
         }
 
         if (config.simulateNetworkPartitions) {
-            System.out.printf("Partition probability (0.0-1.0) [default: %.2f]: ", config.partitionProbability);
+            System.out.printf("Node Partition probability (0.0-1.0) [default: %.2f]: ", config.partitionProbability);
             String partitionProbStr = scanner.nextLine().trim();
             if (!partitionProbStr.isEmpty()) {
                 try {
@@ -315,7 +314,6 @@ public class DSMTestSuite {
 
         // Create nodes
         Map<String, DSMNode> nodes = new HashMap<>();
-        ConsistencyMonitor monitor = new ConsistencyMonitor(nodeNames, config.capType);
 
         for (String nodeName : nodeNames) {
 
@@ -356,9 +354,6 @@ public class DSMTestSuite {
         // Start simulation
         Simulator simulator = Simulator.getInstance();
 
-        // Start monitoring
-        // monitor.startMonitoring();
-
         System.out.println("Starting simulation...");
 
         // Start the simulation in a background thread
@@ -389,107 +384,7 @@ public class DSMTestSuite {
 
         }
 
-        // Stop monitoring
-        // monitor.stopMonitoring();
         simulator.shutdown();
 
-        // Display results
-        // displayResults(nodes, monitor);
     }
-
-    /**
-     * Display test results and analysis
-     */
-    // private static void displayResults(Map<String, TestNode> nodes,
-    // ConsistencyMonitor monitor) {
-    // System.out.println("\n" + "=".repeat(80));
-    // System.out.println("📊 TEST RESULTS");
-    // System.out.println("=".repeat(80));
-
-    // // Display per-node statistics
-    // System.out.println("\n📈 Per-Node Statistics:");
-    // for (TestNode node : nodes.values()) {
-    // System.out.printf(" %s: %s%n", node.getName(),
-    // node.getDSM().getConsistencyMetrics());
-    // }
-
-    // // Display consistency analysis
-    // System.out.println("\n🔍 Consistency Analysis:");
-    // monitor.displayAnalysis();
-
-    // // Display final state comparison
-    // System.out.println("\n🗂️ Final State Comparison:");
-    // displayStateComparison(nodes);
-
-    // // Display CAP theorem analysis
-    // System.out.println("\n📋 CAP Theorem Analysis:");
-    // displayCAPAnalysis(nodes.values().iterator().next().getDSM().getCAPType(),
-    // monitor);
-    // }
-
-    /**
-     * Display state comparison across all nodes
-     */
-    // private static void displayStateComparison(Map<String, TestNode> nodes) {
-    // Map<String, Map<String, String>> nodeStates = new HashMap<>();
-
-    // for (TestNode node : nodes.values()) {
-    // nodeStates.put(node.getName(), node.getDSM().getLocalState());
-    // }
-
-    // // Find all keys across all nodes
-    // Set<String> allKeys = new HashSet<>();
-    // for (Map<String, String> state : nodeStates.values()) {
-    // allKeys.addAll(state.keySet());
-    // }
-
-    // boolean isConsistent = true;
-    // for (String key : allKeys) {
-    // Set<String> values = new HashSet<>();
-    // System.out.printf(" Key '%s': ", key);
-
-    // for (String nodeName : nodeStates.keySet()) {
-    // String value = nodeStates.get(nodeName).get(key);
-    // values.add(value);
-    // System.out.printf("%s=%s ", nodeName, value);
-    // }
-
-    // if (values.size() > 1) {
-    // System.out.print("❌ INCONSISTENT");
-    // isConsistent = false;
-    // } else {
-    // System.out.print("✅ CONSISTENT");
-    // }
-    // System.out.println();
-    // }
-
-    // System.out.printf("\n Overall Consistency: %s%n",
-    // isConsistent ? "✅ CONSISTENT" : "❌ INCONSISTENT");
-    // }
-
-    private static void displayCAPAnalysis(CAPType capType, ConsistencyMonitor monitor) {
-        switch (capType) {
-            case AP:
-                System.out.println("  📍 AP System (Availability + Partition Tolerance):");
-                System.out.println("    ✅ High availability - operations continue during partitions");
-                System.out.println("    ✅ Partition tolerant - system remains operational");
-                System.out.println("    ⚠️  Eventual consistency - temporary inconsistencies expected");
-                break;
-
-            case CA:
-                System.out.println("  📍 CA System (Consistency + Availability):");
-                System.out.println("    ✅ Strong consistency - all operations maintain consistency");
-                System.out.println("    ✅ High availability - fast operations when network is stable");
-                System.out.println("    ❌ No partition tolerance - fails during network splits");
-                break;
-
-            case CP:
-                System.out.println("  📍 CP System (Consistency + Partition Tolerance):");
-                System.out.println("    ✅ Strong consistency - quorum ensures data consistency");
-                System.out.println("    ✅ Partition tolerant - continues with majority quorum");
-                System.out.println("    ⚠️  Limited availability - may block when quorum unavailable");
-                break;
-        }
-    }
-
 }

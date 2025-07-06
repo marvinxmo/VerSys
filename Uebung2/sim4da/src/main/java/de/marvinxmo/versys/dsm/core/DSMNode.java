@@ -38,6 +38,27 @@ public abstract class DSMNode extends Node {
             "giraffe", "zebra", "lion", "elephant", "monkey", "koala"
     };
 
+    /**
+     * Represents a value with version information for conflict resolution in AP
+     */
+    public class VersionedValue {
+        public final String value;
+        public final long timestamp;
+        public final String lastUpdater;
+
+        public VersionedValue(String value, long timestamp, String lastUpdater) {
+            this.value = value;
+            this.timestamp = timestamp;
+            this.lastUpdater = lastUpdater;
+        }
+
+        @Override
+        public String toString() {
+            return String.format("VersionedValue[value=%d, timestamp=%d, origin=%s]",
+                    value, timestamp, lastUpdater);
+        }
+    }
+
     public DSMNode(String name) {
         super(name);
     }
