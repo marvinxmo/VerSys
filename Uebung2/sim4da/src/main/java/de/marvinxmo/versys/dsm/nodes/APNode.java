@@ -160,6 +160,12 @@ public class APNode extends DSMNode {
                 localStorage.put(key, new_value);
                 Boolean broadcasted = false;
                 int latency = 0;
+                latency = this.getLatencyMs();
+
+                System.out.printf(
+                        "[%s] WRITE: %s = %s (timestamp: %d) [Partitioned: %s] [try to broadcast with latency %d] %n",
+                        getName(), key, new_value.value, new_value.timestamp, !this.messageProcessingEnabled,
+                        latency);
 
                 // Try to broadcast (will fail during partition due to disabled message
                 // processing)
@@ -173,12 +179,11 @@ public class APNode extends DSMNode {
                         message.add("timestamp", String.valueOf(new_value.timestamp));
                         message.add("originNodeId", getName());
 
-                        latency = this.getLatencyMs();
-                        System.out.printf("[%s] Broadcasted write propagation for %s with delay of %d ms %n", getName(),
-                                key, latency);
                         sleep(latency);
 
                         broadcast(message);
+                        System.out.printf("[%s] Broadcasted write propagation for %s with delay of %d ms %n", getName(),
+                                key, latency);
                         broadcasted = true;
 
                     } catch (Exception broadcastError) {
@@ -193,10 +198,6 @@ public class APNode extends DSMNode {
                     return;
 
                 }
-                System.out.printf(
-                        "[%s] WRITE: %s = %s (timestamp: %d) [Partitioned: %s] [broadcasted: %s with latency %d] %n",
-                        getName(), key, new_value.value, new_value.timestamp, !this.messageProcessingEnabled,
-                        broadcasted, latency);
 
             } catch (Exception e) {
                 System.err.printf("[%s] Write operation failed: %s%n", getName(), e.getMessage());

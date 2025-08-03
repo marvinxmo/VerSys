@@ -35,7 +35,13 @@ public abstract class DSMNode extends Node {
 
     // Random read/write actions are generated for these keys
     public final String[] KEYS_FOR_DSM = {
-            "giraffe", "zebra", "lion", "elephant", "monkey", "koala"
+            "giraffe",
+            "zebra",
+            "lion",
+            "elephant",
+            "monkey",
+            "koala"
+
     };
 
     /**
