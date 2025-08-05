@@ -45,8 +45,8 @@ MongoDB verfügt drei verschiedene Tier-Ebenen.
 
 ### Konsistenz
 
-Write-Operationen gelten standardmäßig als erfolgreich, wenn mehr als die Hälfte der Nodes (innerhalb eines Replica Sets) den Schreibvorgang bestätigen. Das Quorum-Ziel kann jedoch beliebig angepasst werden. Hierbei gilt: Ein höheres Ziel verursacht stärkere Kosistenz und Vice versa.
-Read-Operationen können auf unterschiedliche Weisen erfolgen. Hier eine Übersicht über die meist verwendeten:
+Write-Operationen gelten standardmäßig als erfolgreich, wenn mehr als die Hälfte der Nodes (innerhalb eines Replica Sets) den Schreibvorgang bestätigen. Das Quorum-Ziel kann jedoch mithilfe von `writeConcern` beliebig angepasst werden. Hierbei gilt: Ein höheres Ziel verursacht stärkere Kosistenz und Vice versa.
+Read-Operationen können auf unterschiedliche Weisen erfolgen. Hier eine Übersicht über die meist verwendeten `readConcern` Konfigurationen:
 
 | `readConcern`    | Beschreibung                                                                                                                                                                                                                                                                                                  |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -59,3 +59,11 @@ Zudem lässt sich festlegen ob immer von Primary gelesen werden soll oder ob zur
 Jedes Replica Set besitzt ein operations log (oplog), eine Liste aller Schreiboperationen die auf dem Primary stattfinden. Jeder Eintrag ist mit einem präzisen logischen Timestamp versehen. Die Secondaries fragen regelmäßig das Oplog des Primary ab und kopieren dieses. Im Falle eines Ausfalls des Primary werden Secondaries deren most recent oplog-Transaktion einen "hohen" Timestamp besitzen, für die Wahl des Nachfolgers bevorzugt.
 
 ### PACELC
+
+Mit den default-Settings
+
+1. `writeConcern: { w: 1 }` (bedeutet nur ein Primiray bestätgt write)
+2. `readConcern: "local"` (liest Daten aus lokalem Speicher des Primary)
+
+lässt sich MongoDB als PA/EL System klassifizieren. Allerdings lässt sich durch andere Konfigurationen von MongoDB auch die Konsistenz deutlich stärken. So lässt sich durch Anpassen des Quorum-Ziels (`writeConcern: "majority"`) erreichen, dass Schreiboperationen erst dann als erfolgreich gelten, wenn sie von einer Mehrheit der Replica-Set-Mitglieder bestätigt wurden. Ergänzend dazu sorgt ein `readConcern: "majority"` dafür, dass Leseoperationen nur solche Daten zurückgeben, die ebenfalls von einer Mehrheit bestätigt wurden – selbst im Falle eines Failovers bleibt so die Sicht auf bestätigte Daten erhalten.
+Für Anwendungen mit besonders hohen Anforderungen an Datenkonsistenz kann zusätzlich `readConcern: "linearizable"` verwendet werden. Damit wird garantiert, dass der Lesevorgang streng sequenziell zum zuletzt erfolgreich bestätigten Schreibvorgang erfolgt – allerdings auf Kosten der Latenz. So kann MongoDB auch als PC/EC-System verwendet werden.
