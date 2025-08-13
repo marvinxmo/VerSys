@@ -1,0 +1,102 @@
+[
+  {
+    "_id": 0,
+    "name": "localhost:2020",
+    "health": 1.0,
+    "state": 1,
+    "stateStr": "PRIMARY",
+    "uptime": 15431,
+    "optime": {
+      "ts": "Timestamp(1755089260, 915)",
+      "t": 4
+    },
+    "optimeDate": "2025-08-13 12:47:40",
+    "optimeWritten": {
+      "ts": "Timestamp(1755089260, 915)",
+      "t": 4
+    },
+    "optimeWrittenDate": "2025-08-13 12:47:40",
+    "lastAppliedWallTime": "2025-08-13 12:47:40.366000",
+    "lastDurableWallTime": "2025-08-13 12:47:40.280000",
+    "lastWrittenWallTime": "2025-08-13 12:47:40.366000",
+    "syncSourceHost": "",
+    "syncSourceId": -1,
+    "infoMessage": "",
+    "electionTime": "Timestamp(1755080176, 1)",
+    "electionDate": "2025-08-13 10:16:16",
+    "configVersion": 1,
+    "configTerm": 4,
+    "self": true,
+    "lastHeartbeatMessage": ""
+  },
+  {
+    "_id": 1,
+    "name": "localhost:2021",
+    "health": 1.0,
+    "state": 2,
+    "stateStr": "SECONDARY",
+    "uptime": 15421,
+    "optime": {
+      "ts": "Timestamp(1755089260, 13)",
+      "t": 4
+    },
+    "optimeDurable": {
+      "ts": "Timestamp(1755089260, 13)",
+      "t": 4
+    },
+    "optimeWritten": {
+      "ts": "Timestamp(1755089260, 13)",
+      "t": 4
+    },
+    "optimeDate": "2025-08-13 12:47:40",
+    "optimeDurableDate": "2025-08-13 12:47:40",
+    "optimeWrittenDate": "2025-08-13 12:47:40",
+    "lastAppliedWallTime": "2025-08-13 12:47:40.357000",
+    "lastDurableWallTime": "2025-08-13 12:47:40.357000",
+    "lastWrittenWallTime": "2025-08-13 12:47:40.357000",
+    "lastHeartbeat": "2025-08-13 12:47:40.014000",
+    "lastHeartbeatRecv": "2025-08-13 12:47:39.833000",
+    "pingMs": 0,
+    "lastHeartbeatMessage": "",
+    "syncSourceHost": "localhost:2020",
+    "syncSourceId": 0,
+    "infoMessage": "",
+    "configVersion": 1,
+    "configTerm": 4
+  },
+  {
+    "_id": 2,
+    "name": "localhost:2022",
+    "health": 1.0,
+    "state": 2,
+    "stateStr": "SECONDARY",
+    "uptime": 11108,
+    "optime": {
+      "ts": "Timestamp(1755089260, 13)",
+      "t": 4
+    },
+    "optimeDurable": {
+      "ts": "Timestamp(1755089260, 13)",
+      "t": 4
+    },
+    "optimeWritten": {
+      "ts": "Timestamp(1755089260, 13)",
+      "t": 4
+    },
+    "optimeDate": "2025-08-13 12:47:40",
+    "optimeDurableDate": "2025-08-13 12:47:40",
+    "optimeWrittenDate": "2025-08-13 12:47:40",
+    "lastAppliedWallTime": "2025-08-13 12:47:40.362000",
+    "lastDurableWallTime": "2025-08-13 12:47:40.362000",
+    "lastWrittenWallTime": "2025-08-13 12:47:40.362000",
+    "lastHeartbeat": "2025-08-13 12:47:40.014000",
+    "lastHeartbeatRecv": "2025-08-13 12:47:40.005000",
+    "pingMs": 0,
+    "lastHeartbeatMessage": "",
+    "syncSourceHost": "localhost:2020",
+    "syncSourceId": 0,
+    "infoMessage": "",
+    "configVersion": 1,
+    "configTerm": 4
+  }
+]
