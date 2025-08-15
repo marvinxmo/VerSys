@@ -111,3 +111,79 @@ Als Last-Generatoren verwende ich 20 parrallel laufende Threads welche jeweils 2
 ![Replication Lag](./resources/ReplicationLag.png)
 
 ## Aufgabe 3
+
+### Geplantes Experiment: Workload vs. Skalierung
+
+Die zentrale Hypothese war, dass die Effektivität von horizontaler Skalierung nicht nur von der reinen Anzahl der Knoten, sondern ebenfalls von der Natur der Arbeitslast abhängt. Um dies zu demonstrieren, habe ich widerrum zwei unterschiedliche Szenarien entworfen:
+
+1.  **Szenario "Contention" (Engpass):** Hierbei simuliert eine hohe Anzahl von Threads das ständige Aktualisieren eines **einzigen Dokuments** (`update_one` mit `$inc`). Dies spiegelt den Konflikt um eine einzelne, stark nachgefragte Ressource wider, wie z.B. den Page-View-Counter einer Produktseite . Die Erwartung war, dass die Leistung hier **nicht** mit zusätzlichen Shards skaliert, da Operationen auf denselben Shard und dasselbe Dokument abzielen und sich gegenseitig blockieren.
+
+2.  **Szenario "Distributed" (Verteilte Last):** In diesem Szenario fügen die Threads kontinuierlich **neue, einzigartige Dokumente** ein (`insert_one`), was einer Protokollierung von Benutzeraktivitäten entspricht. Die Erwartung war, dass die Leistung hier durch den Hashed Shard Key mit der Anzahl der Shards skaliert, da die Last ideal auf den Cluster verteilt werden kann.
+
+Das Ziel war es zu zeigen, dass eine horizontale Skalierung nur dann sinnvoll ist, wenn die Anwendungslogik und die Datenzugriffsmuster eine Parallelisierung erlauben.
+
+### Unerwartete Ergebnisse und schrittweise Optimierung
+
+Auf dem Weg zu aussagekräftigen Messergebnissen, musste ich zwei Hürden unterschiedlicher Natur überwinden.
+
+**1. Erste Implementierung: `insert_one` vs. `update_one`**
+
+Entgegen der Erwartungen zeigten die ersten Messreihen, dass die `distributed`-Variante (`insert_one`) einen deutlich geringeren Durchsatz als die `contention`-Variante (`update_one`) aufwies. Wie schon in Aufagbe 2 habe ich für alle Messreihen 20 Threads genutzt, die jeweils 2000 Operationen generiert haben und `writeConcern="majority"` genutzt. Ausserdem keine Replikation von den shards.
+
+| Szenario (2 Shards, 1 mongos) | Durchsatz (Ops/s) | Analyse |
+| ----------------------------- | ----------------- | ------- |
+| `contention`                  | ~2600             | xxx     |
+| `distributed`                 | ~2200             | xxx     |
+
+**2. Der `mongos`-Router als Bottleneck**
+
+Die erste Vermutung war, dass die einzelne `mongos`-Router-Instanz unter der hohen Last von hunderten parallelen Anfragen zum Engpass wird. Um dies zu beheben, habe ich das Test-Skripte erweitert, um den Start und die Nutzung von **mehreren `mongos`-Instanzen** zu ermöglichen. Der Client (`pymongo`) wurde so konfiguriert, dass er sich mit dem Pool von Routern verbindet und die Last automatisch auf diese verteilt.
+
+| Szenario (2 Shards, 3 mongos) | Durchsatz (Ops/s) | Analyse                                                                                          |
+| ----------------------------- | ----------------- | ------------------------------------------------------------------------------------------------ |
+| `contention`                  | ~2500             | Kaum eine Veränderung, da der Engpass weiterhin der Lock auf dem einzelnen Dokument ist.         |
+| `distributed`                 | ~2400             | Leichte Verbesserung, aber immer noch deutlich langsamer und weit von einer Skalierung entfernt. |
+
+Das Ergebnis war ernüchternd: Auch mit mehreren Routern blieb der Durchsatz beider Szenarien bei hoher Last fast identisch. Die Hypothese, dass der mogos-Router der Bottleneck ist muss also verworfen werden. Dies führte zur Schlussfolgerung, dass der limitierende Faktor die **Rechenleistung meiner Testmaschine** war. Das Betreiben des kompletten Clusters und des Last-Generators auf einem Rechner verhindert also eine aussagekräftige Messung mit diesem Setup.
+
+**3. Unterschied in der Art der Operationen**
+
+Allerdings bin ich dann darauf gekommen, dass es auch an de unterschiedlichen Operationstypen liegen könnte könnte:
+
+....
+
+1. Bei `update_one` mit `$inc` führt MongoDB eine sehr effiziente In-Place-Modifikation durch. Das Dokument ist bereits im Speicher und benötigt minimale Ressourcen für die Aktualisierung.
+
+2. Bei `insert_one` hingegen muss MongoDB:
+    - Ein neues Dokument anlegen
+    - Eine eindeutige ID generieren
+    - Indizes aktualisieren
+    - Das Dokument im Speicher und auf der Festplatte platzieren
+    - Metadaten für die Collection aktualisieren
+
+Diese Unterschiede erklären, warum selbst bei Contentions die `update_one`-Operationen überraschend schnell abliefen, während die `insert_one`-Operationen trotz theoretisch besserer Parallelisierungsmöglichkeiten langsamer waren.
+
+In realen Hochleistungssystemen werden selten einzelne Dokumente eingefügt, sondern stattdessen werden Daten in Batches verarbeitet. Dies minimiert den Overhead pro Operation drastisch und erlaubt eine wesentlich effizientere Ressourcennutzung.
+
+Die finale Erkenntnis war, dass Hochleistungssysteme nicht für jedes Ereignis eine separate Anfrage senden. Stattdessen werden Daten gesammelt und in **Batches** verarbeitet. Um dieses realistische Verhalten zu simulieren, wurde das `distributed`-Szenario auf die Verwendung von `insert_many` mit `ordered=False` umgestellt. Dieser Ansatz minimiert den Netzwerk- und Router-Overhead drastisch und erlaubt es dem Cluster, die Last effizient zu parallelisieren.
+
+Diese finale Implementierung lieferte endlich die erwarteten, aussagekräftigen Ergebnisse über verschiedene Clustergrößen hinweg.
+
+| Clustergröße | Szenario      | Durchsatz (Ops/s) | Skalierungsverhalten                                                                                              |
+| :----------- | :------------ | :---------------- | :---------------------------------------------------------------------------------------------------------------- |
+| **1 Shard**  | `contention`  | ~1950             | Basis-Performance, limitiert durch die maximale Update-Rate auf einem Dokument.                                   |
+|              | `distributed` | **~25.000**       | Deutlich höherer Durchsatz durch die Effizienz von Batch-Inserts, selbst auf einem einzelnen Shard.               |
+| **2 Shards** | `contention`  | ~1980             | **Keine Skalierung.** Der Durchsatz bleibt flach, da der Engpass (das eine Dokument) derselbe bleibt.             |
+|              | `distributed` | **~48.000**       | **Nahezu lineare Skalierung.** Der Durchsatz verdoppelt sich fast, da die Last nun auf zwei Shards verteilt wird. |
+| **3 Shards** | `contention`  | ~1970             | **Keine Skalierung.** Bestätigt, dass mehr Hardware das Problem nicht löst.                                       |
+|              | `distributed` | **~72.000**       | **Anhaltende lineare Skalierung.** Der Durchsatz verdreifacht sich nahezu im Vergleich zum einzelnen Shard.       |
+
+### Endanalyse
+
+Die Messergebnisse des finalen Experiments demonstrieren eindrucksvoll, wann sich horizontales Scaling lohnt. Es ist keine magische Lösung, die durch das bloße Hinzufügen von Hardware funktioniert. Der Erfolg hängt von zwei entscheidenden Faktoren ab:
+
+1.  **Parallelisierbarkeit der Arbeitslast:** Wie im `contention`-Szenario gezeigt, kann selbst ein riesiger Cluster die Performance nicht verbessern, wenn alle Anfragen auf eine einzige, nicht teilbare Ressource abzielen. Die Arbeitslast selbst muss es erlauben, auf mehrere Knoten verteilt zu werden.
+
+2.  **Effiziente Client-Kommunikation:** Wie die Entwicklung des `distributed`-Szenarios zeigte, ist der Overhead von tausenden Einzelanfragen ein signifikanter Performance-Killer. Erst durch die Umstellung auf realistische Batch-Operationen (`insert_many`) konnte der Client-seitige Engpass beseitigt und die wahre Skalierbarkeit des darunterliegenden Sharded Clusters aufgedeckt werden.
+
+Horizontales Scaling ist also eine Symbiose aus einer skalierbaren Datenbankarchitektur und einer Anwendungslogik, die diese Architektur durch parallelisierbare und effiziente Datenzugriffsmuster optimal nutzt.
