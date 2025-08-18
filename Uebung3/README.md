@@ -62,8 +62,8 @@ Jedes Replica Set besitzt ein operations log (oplog), eine Liste aller Schreibop
 
 Mit den default-Settings
 
-1. `writeConcern: { w: 1 }` (bedeutet nur ein Primiray bestätgt write)
-2. `readConcern: "local"` (liest Daten aus lokalem Speicher des Primary)
+1. `writeConcern: { w: 1 }` (bedeutet nur Primiray bestätgt write)
+2. `readConcern: "local"` (liest Daten aus lokalem Speicher)
 
 lässt sich MongoDB als PA/EL System klassifizieren. Allerdings lässt sich durch andere Konfigurationen von MongoDB auch die Konsistenz deutlich stärken. So lässt sich durch Anpassen des Quorum-Ziels (`writeConcern: "majority"`) erreichen, dass Schreiboperationen erst dann als erfolgreich gelten, wenn sie von einer Mehrheit der Replica-Set-Mitglieder bestätigt wurden. Ergänzend dazu sorgt ein `readConcern: "majority"` dafür, dass Leseoperationen nur solche Daten zurückgeben, die ebenfalls von einer Mehrheit bestätigt wurden – selbst im Falle eines Failovers bleibt so die Sicht auf bestätigte Daten erhalten.
 Für Anwendungen mit besonders hohen Anforderungen an Datenkonsistenz kann zusätzlich `readConcern: "linearizable"` verwendet werden. Damit wird garantiert, dass der Lesevorgang streng sequenziell zum zuletzt erfolgreich bestätigten Schreibvorgang erfolgt – allerdings auf Kosten der Latenz. So kann MongoDB auch als PC/EC-System verwendet werden.
@@ -81,7 +81,7 @@ Simuliert wird eine Abstimmung zwischen zwei Kandidaten, wie sie zum Beispiel be
 | **Ziel**         | Maximale Datenkonsistenz und -sicherheit. | Maximaler Schreibdurchsatz und Lastverteilung.       |
 | **Kompromiss**   | Geringerer Durchsatz, höhere Latenz.      | Veraltete Leseergebnisse (stale reads) sind möglich. |
 
-Als Last-Generatoren verwende ich 20 parrallel laufende Threads welche jeweils 2000 Stimmen für einen Kandidaten abgeben. Innerhalb der Thread verwende ich eine einfach while Schleife (ohne sleep), die mithilfe von pymongo direkt in die Datenbank schreiben. Es existieren lediglich zwei Dokumente mit jeweils einer id und den counter, welche durch die Last-Generatoren inkrementiert werden.
+Als Last-Generatoren verwende ich 20 parrallel laufende Threads welche jeweils 2000 Stimmen für einen Kandidaten abgeben. Innerhalb der Thread verwende ich eine einfach while-Schleife, die mithilfe von pymongo direkt in die Datenbank schreiben. Es existieren lediglich zwei Dokumente mit jeweils einer id und den counter, welche durch die Last-Generatoren inkrementiert werden.
 
 ### Ergebnisse des Benchmarks
 
@@ -99,12 +99,12 @@ Als Last-Generatoren verwende ich 20 parrallel laufende Threads welche jeweils 2
 | Write-Latenz (ms)    | 4.2463      | 4.7532      | 5.1658      | **4.7218**       |
 | Read-Latenz (ms)     | 0.2212      | 0.2213      | 0.2235      | **0.2220**       |
 
-|                   | **Analyse**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
-| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Dauer (s)         | Die `high_throughput`-Konfiguration ist etwa 35% schneller, da Schreiboperationen nicht auf die Bestätigung der Mehrheit der Nodes warten müssen.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| Durchsatz (Ops/s) | Der Durchsatz ist bei `high_throughput` etwa 54% höher , was die verbesserte Leistung bei gelockerten Konsistenzanforderungen zeigt.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| Write-Latenz (ms) | Die nahezu identische Write-Latenz in beiden Modi ist auf den ersten Blick überraschend, erklärt sich aber durch die Messmethode. Die opLatencies-Statistik erfasst die serverseitige Ausführungszeit auf dem Primary, die in beiden Fällen ähnlich schnell ist. Der signifikante Unterschied in der Gesamtdauer und im Durchsatz entsteht durch die clientseitige Wartezeit: Bei `strong_consistency` muss der Client auf die Bestätigung der Replikation warten, was die Operation aus Sicht der Anwendung verlangsamt.                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| Read-Latenz (ms)  | Auch bei der Read-Latenz zeigen die Messungen für beide Modi fast identische Werte. Dies lässt den Schluss zu, dass der Primary-Knoten in dieser Simulation nicht zum Flaschenhals für Leseoperationen wird. Folglich ist die Strategie, Lesevorgänge auf die Secondaries auszulagern (`readPreference = SECONDARY_PREFERRED`), hier nicht nur ohne Performance-Gewinn, sondern sogar kontraproduktiv. Der Nachteil dieser Strategie ist der inhärente Replikations-Lag, der dazu führt, dass Leseanfragen von den Secondaries veraltete Daten zurückgeben. Um diesen Effekt zu demonstrieren, habe ich zusätzlich ein Live-Konsistenz-Monitor entwickelt. Dieser nutzt den oplog des Primaries, um alle 0,5 Sekunden den Replikations-Lag der Secondaries in Anzahl der Operationen zu berechnen und auszugeben (siehe Abbildung). Für dieses spezifische Anwendungsszenario wäre es daher sinnvoller, immer direkt vom Primary zu lesen, um aktuelle Daten ohne Latenznachteil zu erhalten. |
+|                   | **Analyse**                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Dauer (s)         | Die `high_throughput`-Konfiguration ist etwa 35% schneller, da Schreiboperationen nicht auf die Bestätigung der Mehrheit der Nodes warten müssen.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Durchsatz (Ops/s) | Der Durchsatz ist bei `high_throughput` etwa 54% höher , was die verbesserte Leistung bei gelockerten Konsistenzanforderungen zeigt.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Write-Latenz (ms) | Die nahezu identische Write-Latenz in beiden Modi ist auf den ersten Blick überraschend, erklärt sich aber durch die Messmethode. Die opLatencies-Statistik erfasst die serverseitige Ausführungszeit **auf dem Primary**, die in beiden Fällen ähnlich schnell ist. Der signifikante Unterschied in der Gesamtdauer und im Durchsatz entsteht durch die clientseitige Wartezeit: Bei `strong_consistency` muss der Client auf die Bestätigung der Replikation warten, was die Operation aus Sicht der Anwendung verlangsamt.                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Read-Latenz (ms)  | Auch bei der Read-Latenz zeigen die Messungen für beide Modi fast identische Werte. Dies lässt den Schluss zu, dass der Primary-Knoten in dieser Simulation nicht zum Flaschenhals für Leseoperationen wird. Folglich ist die Strategie, Lesevorgänge auf die Secondaries auszulagern (`readPreference = SECONDARY_PREFERRED`), hier nicht nur ohne Performance-Gewinn, sondern sogar kontraproduktiv. Der Nachteil dieser Strategie ist der inhärente Replikations-Lag, der dazu führt, dass Leseanfragen von den Secondaries veraltete Daten zurückgeben. Um diesen Effekt zu demonstrieren, habe ich zusätzlich ein Live-Konsistenz-Monitor entwickelt. Dieser nutzt den oplog des Primaries, um alle 0,5 Sekunden den Replikations-Lag der Secondaries (in Anzahl von Operationen) zu berechnen und auszugeben (siehe Abbildung). Für dieses spezifische Anwendungsszenario wäre es daher sinnvoller, immer direkt vom Primary zu lesen, um aktuelle Daten ohne Latenznachteil zu erhalten. |
 
 <br>
 
@@ -116,41 +116,39 @@ Als Last-Generatoren verwende ich 20 parrallel laufende Threads welche jeweils 2
 
 Die zentrale Hypothese war, dass die Effektivität von horizontaler Skalierung nicht nur von der reinen Anzahl der Knoten, sondern ebenfalls von der Natur der Arbeitslast abhängt. Um dies zu demonstrieren, habe ich widerrum zwei unterschiedliche Szenarien entworfen:
 
-1.  **Szenario "Contention" (Engpass):** Hierbei simuliert eine hohe Anzahl von Threads das ständige Aktualisieren eines **einzigen Dokuments** (`update_one` mit `$inc`). Dies spiegelt den Konflikt um eine einzelne, stark nachgefragte Ressource wider, wie z.B. den Page-View-Counter einer Produktseite . Die Erwartung war, dass die Leistung hier **nicht** mit zusätzlichen Shards skaliert, da Operationen auf denselben Shard und dasselbe Dokument abzielen und sich gegenseitig blockieren.
+1.  **Szenario "Contention" (Engpass):** Hierbei simuliert eine hohe Anzahl von Threads das ständige Aktualisieren eines **einzigen Dokuments** (`update_one` mit `$inc`). Dies spiegelt den Konflikt um eine einzelne, stark nachgefragte Ressource wider, wie z.B. ein Page-View-Counter einer Produktseite. Die Erwartung war, dass die Leistung hier **nicht** mit zusätzlichen Shards skaliert, da Operationen auf denselben Shard und dasselbe Dokument abzielen und sich gegenseitig blockieren.
 
-2.  **Szenario "Distributed" (Verteilte Last):** In diesem Szenario fügen die Threads kontinuierlich **neue, einzigartige Dokumente** ein (`insert_one`), was einer Protokollierung von Benutzeraktivitäten entspricht. Die Erwartung war, dass die Leistung hier durch den Hashed Shard Key mit der Anzahl der Shards skaliert, da die Last ideal auf den Cluster verteilt werden kann.
+2.  **Szenario "Distributed" (Verteilte Last):** In diesem Szenario fügen die Threads kontinuierlich **neue, einzigartige Dokumente** ein (`insert_one`), was einer Protokollierung von einzelnen Events entspricht. Die Erwartung war, dass die Leistung hier mit der Anzahl der Shards skaliert, da die Last ideal auf dem Cluster verteilt werden kann.
 
 Das Ziel war es zu zeigen, dass eine horizontale Skalierung nur dann sinnvoll ist, wenn die Anwendungslogik und die Datenzugriffsmuster eine Parallelisierung erlauben.
 
+Wie schon in Aufagbe 2 habe ich für alle Messungen 20 Threads genutzt, die jeweils 2000 Operationen generieren. Ich habe `writeConcern="majority"` genutzt und die einzelnen Shards wurden nicht repliziert.
+
 ### Unerwartete Ergebnisse und schrittweise Optimierung
 
-Auf dem Weg zu aussagekräftigen Messergebnissen, musste ich zwei Hürden unterschiedlicher Natur überwinden.
+**Erste Implementierung: `insert_one` vs. `update_one`**
 
-**1. Erste Implementierung: `insert_one` vs. `update_one`**
+Entgegen der Erwartungen zeigten die ersten Versuche, dass die `distributed`-Variante (`insert_one`) einen **geringeren** Durchsatz als die `contention`-Variante (`update_one`) aufwies.
 
-Entgegen der Erwartungen zeigten die ersten Messreihen, dass die `distributed`-Variante (`insert_one`) einen deutlich geringeren Durchsatz als die `contention`-Variante (`update_one`) aufwies. Wie schon in Aufagbe 2 habe ich für alle Messreihen 20 Threads genutzt, die jeweils 2000 Operationen generiert haben und `writeConcern="majority"` genutzt. Ausserdem keine Replikation von den shards.
+| Szenario (2 Shards, 1 mongos) | Durchsatz (Ops/s) |
+| ----------------------------- | ----------------- |
+| `contention`                  | ~2600             |
+| `distributed`                 | ~2200             |
 
-| Szenario (2 Shards, 1 mongos) | Durchsatz (Ops/s) | Analyse |
-| ----------------------------- | ----------------- | ------- |
-| `contention`                  | ~2600             | xxx     |
-| `distributed`                 | ~2200             | xxx     |
+Ich hatte folgende zwei Erklärungsansätze für meine Beobachtungen:
 
-**2. Der `mongos`-Router als Bottleneck**
+**1. Der `mongos`-Router als Bottleneck**
 
 Die erste Vermutung war, dass die einzelne `mongos`-Router-Instanz unter der hohen Last von hunderten parallelen Anfragen zum Engpass wird. Um dies zu beheben, habe ich das Test-Skripte erweitert, um den Start und die Nutzung von **mehreren `mongos`-Instanzen** zu ermöglichen. Der Client (`pymongo`) wurde so konfiguriert, dass er sich mit dem Pool von Routern verbindet und die Last automatisch auf diese verteilt.
 
-| Szenario (2 Shards, 3 mongos) | Durchsatz (Ops/s) | Analyse                                                                                          |
-| ----------------------------- | ----------------- | ------------------------------------------------------------------------------------------------ |
-| `contention`                  | ~2500             | Kaum eine Veränderung, da der Engpass weiterhin der Lock auf dem einzelnen Dokument ist.         |
-| `distributed`                 | ~2400             | Leichte Verbesserung, aber immer noch deutlich langsamer und weit von einer Skalierung entfernt. |
+| Szenario (2 Shards, 3 mongos) | Durchsatz (Ops/s) |
+| ----------------------------- | ----------------- |
+| `contention`                  | ~2500             |
+| `distributed`                 | ~2400             |
 
-Das Ergebnis war ernüchternd: Auch mit mehreren Routern blieb der Durchsatz beider Szenarien bei hoher Last fast identisch. Die Hypothese, dass der mogos-Router der Bottleneck ist muss also verworfen werden. Dies führte zur Schlussfolgerung, dass der limitierende Faktor die **Rechenleistung meiner Testmaschine** war. Das Betreiben des kompletten Clusters und des Last-Generators auf einem Rechner verhindert also eine aussagekräftige Messung mit diesem Setup.
+Das Ergebnis war ernüchternd: Auch mit mehreren Routern blieb der Durchsatz beider Szenarien bei hoher Last fast identisch. Die Hypothese, dass der mogos-Router der Bottleneck ist, musste ich also verwerfen. Dies führte zur Schlussfolgerung, dass der limitierende Faktor entweder die **Rechenleistung meiner Testmaschine** sein könnte oder aber der Geschwindigkeitsunterschied zwischen der "update" und "insert" Operation schuld ist.
 
-**3. Unterschied in der Art der Operationen**
-
-Allerdings bin ich dann darauf gekommen, dass es auch an de unterschiedlichen Operationstypen liegen könnte könnte:
-
-....
+**2. Unterschied in der Art der Operationen**
 
 1. Bei `update_one` mit `$inc` führt MongoDB eine sehr effiziente In-Place-Modifikation durch. Das Dokument ist bereits im Speicher und benötigt minimale Ressourcen für die Aktualisierung.
 
@@ -165,25 +163,32 @@ Diese Unterschiede erklären, warum selbst bei Contentions die `update_one`-Oper
 
 In realen Hochleistungssystemen werden selten einzelne Dokumente eingefügt, sondern stattdessen werden Daten in Batches verarbeitet. Dies minimiert den Overhead pro Operation drastisch und erlaubt eine wesentlich effizientere Ressourcennutzung.
 
-Die finale Erkenntnis war, dass Hochleistungssysteme nicht für jedes Ereignis eine separate Anfrage senden. Stattdessen werden Daten gesammelt und in **Batches** verarbeitet. Um dieses realistische Verhalten zu simulieren, wurde das `distributed`-Szenario auf die Verwendung von `insert_many` mit `ordered=False` umgestellt. Dieser Ansatz minimiert den Netzwerk- und Router-Overhead drastisch und erlaubt es dem Cluster, die Last effizient zu parallelisieren.
+Mein neuer Approach war es also nun Operationen zu "sammeln" und in **Batches** zu je 100 Opertionen zu verarbeiten. Um dieses realitätsnähere Verhalten zu simulieren, wurde das `distributed`-Szenario auf die Verwendung von `insert_many` mit `ordered=False` umgestellt. Dieser Ansatz minimiert den Netzwerk- und Router-Overhead drastisch und erlaubt es dem Cluster, die Last effizient zu parallelisieren.
 
-Diese finale Implementierung lieferte endlich die erwarteten, aussagekräftigen Ergebnisse über verschiedene Clustergrößen hinweg.
-
-| Clustergröße | Szenario      | Durchsatz (Ops/s) | Skalierungsverhalten                                                                                              |
-| :----------- | :------------ | :---------------- | :---------------------------------------------------------------------------------------------------------------- |
-| **1 Shard**  | `contention`  | ~1950             | Basis-Performance, limitiert durch die maximale Update-Rate auf einem Dokument.                                   |
-|              | `distributed` | **~25.000**       | Deutlich höherer Durchsatz durch die Effizienz von Batch-Inserts, selbst auf einem einzelnen Shard.               |
-| **2 Shards** | `contention`  | ~1980             | **Keine Skalierung.** Der Durchsatz bleibt flach, da der Engpass (das eine Dokument) derselbe bleibt.             |
-|              | `distributed` | **~48.000**       | **Nahezu lineare Skalierung.** Der Durchsatz verdoppelt sich fast, da die Last nun auf zwei Shards verteilt wird. |
-| **3 Shards** | `contention`  | ~1970             | **Keine Skalierung.** Bestätigt, dass mehr Hardware das Problem nicht löst.                                       |
-|              | `distributed` | **~72.000**       | **Anhaltende lineare Skalierung.** Der Durchsatz verdreifacht sich nahezu im Vergleich zum einzelnen Shard.       |
+| Clustergröße  | Szenario      | Durchsatz (Ops/s) |
+| :------------ | :------------ | :---------------- |
+| **2 Shards**  | `contention`  | ~2.500            |
+|               | `distributed` | **~73.000**       |
+| **5 Shards**  | `contention`  | ~2.400            |
+|               | `distributed` | **~42.000**       |
+| **10 Shards** | `contention`  | ~2.400            |
+|               | `distributed` | **~25.000**       |
 
 ### Endanalyse
 
-Die Messergebnisse des finalen Experiments demonstrieren eindrucksvoll, wann sich horizontales Scaling lohnt. Es ist keine magische Lösung, die durch das bloße Hinzufügen von Hardware funktioniert. Der Erfolg hängt von zwei entscheidenden Faktoren ab:
+Die Ergebnisse zeigen deutlich den Unterschied zwischen den beiden Arbeitslasten und deren Skalierungsverhalten:
 
-1.  **Parallelisierbarkeit der Arbeitslast:** Wie im `contention`-Szenario gezeigt, kann selbst ein riesiger Cluster die Performance nicht verbessern, wenn alle Anfragen auf eine einzige, nicht teilbare Ressource abzielen. Die Arbeitslast selbst muss es erlauben, auf mehrere Knoten verteilt zu werden.
+1. **Contention-Szenario:** Der Durchsatz blieb bei ungefähr 2400-2500 Ops/s konstant, unabhängig von der Anzahl der Shards. Dies bestätigt die Hypothese: Wenn alle Operationen auf dasselbe Dokument abzielen, hilft horizontale Skalierung nicht, da der Konflikt um diese eine Ressource der limitierende Faktor bleibt.
 
-2.  **Effiziente Client-Kommunikation:** Wie die Entwicklung des `distributed`-Szenarios zeigte, ist der Overhead von tausenden Einzelanfragen ein signifikanter Performance-Killer. Erst durch die Umstellung auf realistische Batch-Operationen (`insert_many`) konnte der Client-seitige Engpass beseitigt und die wahre Skalierbarkeit des darunterliegenden Sharded Clusters aufgedeckt werden.
+2. **Distributed-Szenario mit Batch-Operationen:** Hier zeigen sich überraschende Ergebnisse. Mit Batch-Operationen erreicht das System zwar einen dramatisch höheren Durchsatz, allerdings sinkt dieser mit steigender Anzahl an Shards.
 
-Horizontales Scaling ist also eine Symbiose aus einer skalierbaren Datenbankarchitektur und einer Anwendungslogik, die diese Architektur durch parallelisierbare und effiziente Datenzugriffsmuster optimal nutzt.
+Diese inverse Skalierung kann auf **Ressourcenlimitierungen der Testumgebung** zurückgeführt werden. In meiner virtuellen Testumgebung mit konstanten Gesamtressourcen nehmen bei zunehmender Knotenanzahl die verfügbaren Ressourcen pro Knoten ab. Gleichzeitig steigt der Koordinationsaufwand im Cluster an.
+Trotz dieser Limitierung konnte die grundlegende Hypothese bestätigt werden: Ein parallelisierbarer Workload erreicht signifikant höhere Durchsatzraten als ein Workload mit hoher Ressourcenkonkurrenz.
+
+Der Test zeigt, dass die optimale Cluster-Größe stark von der spezifischen Arbeitslast, der verfügbaren Hardware und der Effizienz der Kommunikation zwischen den Komponenten abhängt. Ein "größer ist besser"-Ansatz funktioniert nicht immer, und für manche Szenarien kann ein überdimensioniertes Cluster sogar kontraproduktiv sein. Basierend auf den Experimenten lassen sich folgende Best Practices für effektives horizontales Skalieren ableiten:
+
+1.  **Parallelisierbarkeit der Arbeitslast:** Wie im `contention`-Szenario gezeigt, kann selbst ein riesiges Cluster die Performance nicht verbessern, wenn alle Anfragen auf eine einzige, nicht teilbare Ressource abzielen. Die Arbeitslast selbst muss es erlauben, auf mehrere Knoten verteilt zu werden.
+
+2.  **Effiziente Client-Kommunikation:** Wie die Entwicklung des `distributed`-Szenarios zeigte, ist der Overhead von tausenden Einzelanfragen ein signifikanter Performance-Killer. Erst durch die Umstellung auf Batch-Operationen (`insert_many`) konnte der Client-seitige Engpass beseitigt und die wahre Skalierbarkeit des darunterliegenden Sharded Clusters aufgedeckt werden.
+
+3.  **Balancierung der Hardware-Ressourcen:** Wie unsere Tests gezeigt haben, kann das Hinzufügen von Nodes bei begrenzten Gesamtressourcen zu einer suboptimalen Ressourcenverteilung führen. In Produktionsumgebungen muss sichergestellt werden, dass jeder Knoten über ausreichende CPU-, Speicher- und Netzwerkkapazitäten verfügt, um seine Aufgaben effizient zu erfüllen. Dabei sollten **beide** Skalierungsdimensionen (horizontal und vertikal) betrachtet werden, um ein optimales Gleichgewicht zu finden.

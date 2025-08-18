@@ -49,9 +49,7 @@ def setup_scenario(client: MongoClient, scenario: str):
         db.drop_collection(collection_name)
         print(f"Collection '{collection_name}' gelöscht.")
         # Erstelle das eine Dokument, um das gekämpft wird
-        db[collection_name].insert_one(
-            {"_id": "super-product-42", "stock_count": 99000}
-        )
+        db[collection_name].insert_one({"_id": "welcome_page", "page_views": 0})
         print("Einzelnes Dokument für 'contention'-Szenario erstellt.")
 
     elif scenario == "distributed":
@@ -99,9 +97,7 @@ def run_benchmark(
         """Aktualisiert immer dasselbe Dokument."""
         collection = client[DB_NAME][COLLECTION_CONTENTION]
         for _ in range(ops_per_thread):
-            collection.update_one(
-                {"_id": "super-product-42"}, {"$inc": {"stock_count": -1}}
-            )
+            collection.update_one({"_id": "welcome_page"}, {"$inc": {"page_views": 1}})
 
     def distributed_worker():
         """Fügt immer neue, einzigartige Dokumente ein."""
@@ -115,30 +111,32 @@ def run_benchmark(
                 }
             )
 
-    # def distributed_worker_batches():
-    #     """Fügt immer neue, einzigartige Dokumente in Batches ein."""
-    #     collection = client[DB_NAME][COLLECTION_DISTRIBUTED]
+    def distributed_worker_batches():
+        """Fügt immer neue, einzigartige Dokumente in Batches ein."""
+        collection = client[DB_NAME][COLLECTION_DISTRIBUTED]
 
-    #     batch_size = 100
-    #     docs_to_insert = []
+        batch_size = 100
+        docs_to_insert = []
 
-    #     for i in range(ops_per_thread):
-    #         docs_to_insert.append(
-    #             {
-    #                 "user_id": f"user-{random.randint(1, 1000000)}",
-    #                 "timestamp": datetime.now(),
-    #                 "action": "page_view",
-    #             }
-    #         )
+        for i in range(ops_per_thread):
+            docs_to_insert.append(
+                {
+                    "user_id": f"user-{random.randint(1, 1000000)}",
+                    "timestamp": datetime.now(),
+                    "action": "page_view",
+                }
+            )
 
-    #         # Wenn der Batch voll ist (oder am Ende des Loops), einfügen
-    #         if len(docs_to_insert) >= batch_size or i == ops_per_thread - 1:
-    #             if docs_to_insert:
-    #                 # ordered=False erlaubt MongoDB, die Inserts parallel zu verarbeiten
-    #                 collection.insert_many(docs_to_insert, ordered=False)
-    #                 docs_to_insert = []  # Batch leeren
+            # Wenn der Batch voll ist (oder am Ende des Loops), einfügen
+            if len(docs_to_insert) >= batch_size or i == ops_per_thread - 1:
+                if docs_to_insert:
+                    # ordered=False erlaubt MongoDB, die Inserts parallel zu verarbeiten
+                    collection.insert_many(docs_to_insert, ordered=False)
+                    docs_to_insert = []  # Batch leeren
 
-    worker_func = contention_worker if scenario == "contention" else distributed_worker
+    worker_func = (
+        contention_worker if scenario == "contention" else distributed_worker_batches
+    )
 
     print(
         f"Starte {num_threads} Threads, jeder führt {ops_per_thread} Operationen aus..."
