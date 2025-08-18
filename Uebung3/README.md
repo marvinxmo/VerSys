@@ -1,32 +1,5 @@
 # Übung3
 
-## How to run
-
-```python
-### Navigate to Uebung1 dir
-cd Uebung3
-
-### Create venv inside Uebung1
-python -m venv .venv
-
-### Activate .venv on Windows
-.\.venv\Scripts\activate
-### or macOS and Linux
-source .venv/bin/activate
-
-### Install dependencies from requirement.txt
-pip install -r requirements.txt
-```
-
-Um den Code auszuführen, tun Sie Folgendes:
-
-```python
-### Run the code
-python start.py
-```
-
-Als zu beschriebendes NoSQL-Datenbanksystem habe ich mich für **MongoDB** entschieden.
-
 ## Aufgabe1
 
 ### MongoDB-Cluster-Architektur
