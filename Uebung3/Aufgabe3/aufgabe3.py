@@ -233,6 +233,8 @@ def main():
             client.close()
             print("\nVerbindung zu mongos geschlossen.")
 
+        # time.sleep(60)
+
         print("\n--- Beende Cluster-Knoten ---")
         # Prozesse in umgekehrter Reihenfolge beenden
         for process in reversed(all_processes):
