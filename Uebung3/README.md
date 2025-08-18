@@ -81,7 +81,7 @@ Als Last-Generatoren verwende ich 20 parrallel laufende Threads welche jeweils 2
 
 <br>
 
-![Replication Lag](./resources/ReplicationLag.png)
+![Replication Lag](./resources/ReplicationLag.PNG)
 
 ## Aufgabe 3
 
